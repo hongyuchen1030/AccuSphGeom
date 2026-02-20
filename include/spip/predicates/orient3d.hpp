@@ -14,7 +14,7 @@
 
 namespace spip::predicates {
 
-enum class Sign : int8_t { Neg = -1, Zero = 0, Pos = 1 };
+enum class Sign : int8_t { Negative = -1, Zero = 0, Positive = 1 };
 
 namespace internal {
 
@@ -26,8 +26,8 @@ inline void ensure_exactinit() {
 }
 
 inline Sign sign_from_value(Real v) {
-  if (v > Real(0)) return Sign::Pos;
-  if (v < Real(0)) return Sign::Neg;
+  if (v > Real(0)) return Sign::Positive;
+  if (v < Real(0)) return Sign::Negative;
   return Sign::Zero;
 }
 
