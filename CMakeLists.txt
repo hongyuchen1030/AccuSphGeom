@@ -4,9 +4,20 @@ project(spip LANGUAGES C CXX)
 
 option(SPIP_PREDICATES_USE_FLOAT "Use float version of Shewchuk predicates" OFF)
 
-# Build spip as a small static library that vendors Shewchuk predicates.c.
+option(SPIP_BUILD_TESTS "Build spip tests" ON)
+
+if(SPIP_BUILD_TESTS)
+  enable_testing()
+  add_executable(spip_test_pip
+    tests/test_pip_basic.cpp
+  )
+  target_link_libraries(spip_test_pip PRIVATE spip)
+  add_test(NAME spip_test_pip COMMAND spip_test_pip)
+endif()
+
 add_library(spip STATIC
   third_party/predicates.c
+  src/algorithms/point_in_polygon_sphere.cpp
 )
 
 target_compile_features(spip PUBLIC cxx_std_17)
