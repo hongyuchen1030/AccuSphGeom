@@ -10,17 +10,22 @@
 #include <utility>
 #include <vector>
 
-#include <spip/predicates/orient3d.hpp>
-#include <spip/predicates/quadruple3d.hpp>
+#include <spip/kernels/pip_kernel_adaptive.hpp>
+
+
+// Debug only
+
+#include <iomanip>
+#include <limits>
 
 namespace spip::pip {
 
 namespace {
 
-using spip::predicates::orient3d_on_sphere;
-using spip::predicates::quadruple3d;
-using spip::predicates::Sign;
+using Kernel = spip::kernels::PIPKernelAdaptive;
+using Sign = Kernel::Sign;
 
+// Require a valid pointer to three coordinates.
 inline void require_nonnull3(const double* p, const char* name) {
   if (!p) {
     throw std::invalid_argument(
@@ -28,65 +33,74 @@ inline void require_nonnull3(const double* p, const char* name) {
   }
 }
 
+// Exact coordinatewise equality for 3-vectors.
 inline bool equal3(const double* a, const double* b) {
   return (a[0] == b[0]) && (a[1] == b[1]) && (a[2] == b[2]);
 }
 
+// Negate a predicate sign.
 inline Sign flip_sign(Sign s) {
   if (s == Sign::Positive) return Sign::Negative;
   if (s == Sign::Negative) return Sign::Positive;
   return Sign::Zero;
 }
 
+// Exact sign of a stored scalar.
 inline Sign exact_sign_coord(double x) {
   if (x > 0.0) return Sign::Positive;
   if (x < 0.0) return Sign::Negative;
   return Sign::Zero;
 }
 
-// Reuse the existing exact orient3d predicate to evaluate the sign of a 2x2
-// determinant:
+// Evaluate the sign of the 2 x 2 determinant
 //
 //   | a00 a01 |
 //   | a10 a11 |
 //
-// by embedding it as a 3x3 determinant:
+// by embedding it into the 3 x 3 determinant
 //
 //   | a00 a01 0 |
 //   | a10 a11 0 |
-//   |  0   0  1 |
+//   |  0   0  1 | .
+//
+// This reuses the adaptive kernel orient3d predicate.
 inline Sign exact_sign_det2(double a00, double a01,
                             double a10, double a11) {
   const double r0[3] = {a00, a01, 0.0};
   const double r1[3] = {a10, a11, 0.0};
   const double r2[3] = {0.0, 0.0, 1.0};
-  return orient3d_on_sphere(r0, r1, r2);
+  return Kernel::orient3d_on_sphere(r0, r1, r2);
 }
 
-// q lies on the interior/boundary of the non-antipodal minor arc AB iff:
-//   (1) q lies on the supporting great circle of AB:
-//         orient(A,B,0,q) == 0
-//   (2) the sub-arc normals A×q and q×B do not point in opposite directions:
-//         (A×q)·(q×B) >= 0
+// Return true iff q lies on the closed non-antipodal minor arc AB.
 //
-// The second condition is the scalar quadruple product:
-//   quadruple3d(A, q, q, B) = (A×q)·(q×B)
+// The test consists of two conditions:
+//
+// (1) q lies on the supporting great circle of AB:
+//       orient(A, B, q) = 0
+//
+// (2) q lies between A and B on the minor arc. Equivalently, the normals
+//     A x q and q x B do not point in opposite directions:
+//       (A x q) . (q x B) >= 0
+//
+// The second condition is evaluated as the scalar quadruple product
+// quadruple3d(A, q, q, B).
 //
 // Preconditions:
-// - q, A, B are valid non-null pointers to 3 doubles
-// - vertex coincidence q==A or q==B has already been handled by caller
+// - q, A, and B are valid pointers to 3 coordinates
+// - vertex coincidence q == A or q == B has already been excluded
 inline bool on_minor_arc(const double* q, const double* A, const double* B) {
   if (equal3(A, B)) {
     return false;
   }
-  if (orient3d_on_sphere(A, B, q) != Sign::Zero) {
+  if (Kernel::orient3d_on_sphere(A, B, q) != Sign::Zero) {
     return false;
   }
-  return quadruple3d(A, q, q, B) != Sign::Negative;
+  return Kernel::quadruple3d(A, q, q, B) != Sign::Negative;
 }
 
-// Shared validation for raw-pointer polygon input and exact vertex test.
-// Returns true iff q exactly matches a polygon vertex.
+// Validate the raw-pointer polygon input and test whether q matches a polygon
+// vertex exactly. The function returns true iff q coincides with some poly[i].
 inline bool validate_polygon_and_check_vertex(const double* q,
                                               const double* const* poly,
                                               std::size_t n) {
@@ -108,8 +122,11 @@ inline bool validate_polygon_and_check_vertex(const double* q,
   return false;
 }
 
-// Shared exact boundary test over all edges. Assumes exact OnVertex has already
-// been excluded.
+// Exact boundary test over all polygon edges.
+//
+// Preconditions:
+// - polygon input has already been validated
+// - exact vertex coincidence has already been excluded
 inline bool point_on_polygon_edge_exact(const double* q,
                                         const double* const* poly,
                                         std::size_t n) {
@@ -124,8 +141,10 @@ inline bool point_on_polygon_edge_exact(const double* q,
   return false;
 }
 
-// Ray endpoint: antipode with deterministic perturbation.
-// This is used only by the non-SoS overload.
+// Construct a deterministic perturbation of the antipode of q.
+//
+// This endpoint is used only by the non-SoS overload. A small perturbation is
+// added to the antipode and the result is renormalized to the unit sphere.
 inline void make_perturbed_antipode_simple(const double* q, double* r_out) {
   r_out[0] = -q[0];
   r_out[1] = -q[1];
@@ -135,7 +154,7 @@ inline void make_perturbed_antipode_simple(const double* q, double* r_out) {
   const double ay = std::fabs(r_out[1]);
   const double az = std::fabs(r_out[2]);
 
-  constexpr double eps = 1e-15;
+  constexpr double eps = 1e-8;
   if (ax <= ay && ax <= az) {
     r_out[0] += eps;
   } else if (ay <= ax && ay <= az) {
@@ -157,29 +176,74 @@ inline void make_perturbed_antipode_simple(const double* q, double* r_out) {
   }
 }
 
-// We consider the ray minor arc from query point q to ray endpoint R
-// (perturbed antipode). For a polygon edge minor arc AB, this predicate
-// returns true iff AB contributes one crossing to the ray crossing count,
-// using the half-open convention of Hormann and Agathos (2001).
+// Return true iff the polygon edge AB contributes one crossing to the ray
+// crossing count for the minor arc qR, where R is a perturbed ray endpoint.
+//
+// This routine uses two different decision rules.
+//
+// (1) Nondegenerate case: theorem check
+//     If both ray-plane endpoint signs are nonzero,
+//       s_qR_A = orient(q, R, A),
+//       s_qR_B = orient(q, R, B),
+//     then the crossing decision is made from the 4-sign consistency rule for
+//     minor-arc intersection:
+//
+//       orient(q, R, A) = orient(A, B, R)
+//                       = -orient(A, B, q)
+//                       = -orient(q, R, B).
+//
+//     Equivalently, with
+//       s_qR_A = orient(q, R, A),
+//       s_qR_B = orient(q, R, B),
+//       s_AB_q = orient(A, B, q),
+//       s_AB_R = orient(A, B, R),
+//
+//     the edge AB intersects the ray minor arc qR iff
+//
+//       s_qR_A == s_AB_R &&
+//       s_qR_A == flip_sign(s_AB_q) &&
+//       s_qR_A == flip_sign(s_qR_B).
+//
+//     This is the correct strict minor-arc crossing test in the absence of
+//     degeneracy.
+//
+// (2) Degenerate ray/vertex case: half-open rule
+//     If s_qR_A == 0 or s_qR_B == 0, then a polygon vertex lies on the ray
+//     great circle. In this case the strict 4-sign theorem does not apply.
+//     Instead, we use the half-open convention of Hormann and Agathos (2001):
+//
+//       - an endpoint is treated as "below" iff orient(q, R, endpoint) < 0
+//       - zero is treated as non-negative
+//
+//     so the ray-plane straddle test becomes
+//
+//       (s_qR_A < 0) xor (s_qR_B < 0).
+//
+//     If this straddle test passes, the second-stage edge-plane test is
+//
+//       (s_AB_q < 0) xor (s_AB_R < 0).
+//
+//     Since we assume here that s_AB_q and s_AB_R are already nonzero,
+//     this yields the half-open crossing decision.
+//
+// Preconditions:
+// - exact boundary prechecks have already excluded q on a polygon vertex or edge
+// - s_AB_q and s_AB_R are therefore expected to be nonzero
+// - the only degeneracies handled here are s_qR_A == 0 and/or s_qR_B == 0
 inline bool counts_as_ray_crossing_half_open(const double* A,
                                              const double* B,
                                              const double* q,
                                              const double* R) {
-  const Sign s_qR_A = orient3d_on_sphere(q, R, A);
-  const Sign s_qR_B = orient3d_on_sphere(q, R, B);
-  const Sign s_AB_q = orient3d_on_sphere(A, B, q);
-  const Sign s_AB_R = orient3d_on_sphere(A, B, R);
+  const Sign s_qR_A = Kernel::orient3d_on_sphere(q, R, A);
+  const Sign s_qR_B = Kernel::orient3d_on_sphere(q, R, B);
+  const Sign s_AB_q = Kernel::orient3d_on_sphere(A, B, q);
+  const Sign s_AB_R = Kernel::orient3d_on_sphere(A, B, R);
 
-  // Step 1: half-open straddle test about the ray great circle.
-  // below(x) := (x < 0). Zero is treated as non-negative.
-  const bool below_a = (s_qR_A == Sign::Negative);
-  const bool below_b = (s_qR_B == Sign::Negative);
-  if (!(below_a ^ below_b)) {
-    return false;
-  }
+  std::cout << "  orient(q,R,A) = " << static_cast<int>(s_qR_A) << '\n';
+  std::cout << "  orient(q,R,B) = " << static_cast<int>(s_qR_B) << '\n';
+  std::cout << "  orient(A,B,q) = " << static_cast<int>(s_AB_q) << '\n';
+  std::cout << "  orient(A,B,R) = " << static_cast<int>(s_AB_R) << '\n';
 
-  // Step 2: in-front test about the edge great circle.
-  // After exact boundary prechecks, these should not be Zero.
   if (s_AB_q == Sign::Zero) {
     throw std::domain_error(
         "counts_as_ray_crossing_half_open: q lies on AB great circle "
@@ -191,13 +255,56 @@ inline bool counts_as_ray_crossing_half_open(const double* A,
         "(ray degeneracy)");
   }
 
+  const bool has_ray_plane_zero =
+      (s_qR_A == Sign::Zero) || (s_qR_B == Sign::Zero);
+
+  std::cout << "  has_ray_plane_zero = " << has_ray_plane_zero << '\n';
+
+  if (!has_ray_plane_zero) {
+    const bool theorem_check =
+        (s_qR_A == s_AB_R) &&
+        (s_qR_A == flip_sign(s_AB_q)) &&
+        (s_qR_A == flip_sign(s_qR_B));
+
+    std::cout << "  nondegenerate case: use 4-sign theorem\n";
+    std::cout << "  theorem_check = " << theorem_check << '\n';
+    return theorem_check;
+  }
+
+  const bool below_a = (s_qR_A == Sign::Negative);
+  const bool below_b = (s_qR_B == Sign::Negative);
+
+  std::cout << "  degenerate ray/vertex case: use half-open rule\n";
+  std::cout << "  below_a = " << below_a << '\n';
+  std::cout << "  below_b = " << below_b << '\n';
+
+  if (!(below_a ^ below_b)) {
+    std::cout << "  half-open straddle test failed\n";
+    return false;
+  }
+
+  std::cout << "  half-open straddle test passed\n";
+
   const bool q_side = (s_AB_q == Sign::Negative);
   const bool r_side = (s_AB_R == Sign::Negative);
-  return (q_side ^ r_side);
+
+  std::cout << "  q_side = " << q_side << '\n';
+  std::cout << "  r_side = " << r_side << '\n';
+
+  const bool crossing = (q_side ^ r_side);
+  std::cout << "  half-open crossing decision = " << crossing << '\n';
+
+  return crossing;
 }
 
-// Build a strict symbolic order from global vertex IDs.
-// Smaller rank means larger symbolic perturbation priority.
+// Build a strict symbolic rank ordering from global vertex IDs.
+//
+// Smaller rank means earlier symbolic perturbation priority. Ranks 0 and 1 are
+// reserved for q and R, respectively, so polygon vertices begin at rank 2.
+//
+// Preconditions:
+// - global_vertex_ids is non-null
+// - IDs are unique over the polygon vertices
 inline std::vector<int> build_vertex_ranks(const std::int64_t* global_vertex_ids,
                                            std::size_t n) {
   if (!global_vertex_ids) {
@@ -224,7 +331,6 @@ inline std::vector<int> build_vertex_ranks(const std::int64_t* global_vertex_ids
     }
   }
 
-  // Reserve ranks 0 and 1 for q and R.
   std::vector<int> ranks(n, -1);
   for (std::size_t rank = 0; rank < n; ++rank) {
     ranks[ids[rank].second] = static_cast<int>(rank + 2);
@@ -232,17 +338,29 @@ inline std::vector<int> build_vertex_ranks(const std::int64_t* global_vertex_ids
   return ranks;
 }
 
-// S2-style symbolic perturbation sign for a 3x3 determinant, with rows
-// already sorted by increasing symbolic rank: rank(a) < rank(b) < rank(c).
-// Precondition: orient3d_on_sphere(a,b,c) == 0.
+// Evaluate the symbolic sign prescribed by Simulation of Simplicity for a
+// degenerate 3 x 3 determinant whose rows are already ordered by increasing
+// symbolic rank:
+//
+//   rank(a) < rank(b) < rank(c).
+//
+// This implementation follows Table 14-II of:
+//
+//   Herbert Edelsbrunner and Ernst Peter Mücke. 1990. Simulation of
+//   simplicity: a technique to cope with degenerate cases in geometric
+//   algorithms. ACM Trans. Graph. 9, 1 (Jan. 1990), 66–104.
+//   https://doi.org/10.1145/77635.77639
+//
+// The coefficient sequence below is evaluated in decreasing perturbation
+// significance. Each 2 x 2 coefficient is reduced to an exact determinant
+// sign test, and each 1 x 1 coefficient is reduced to the exact sign of the
+// stored scalar.
+//
+// Precondition:
+// - Kernel::orient3d_on_sphere(a, b, c) == 0
 inline Sign symbolically_perturbed_sign_sorted(const double* a,
                                                const double* b,
                                                const double* c) {
-  // Coefficients are tested in decreasing perturbation significance.
-  // 2x2 coefficients are evaluated through the existing exact orient3d
-  // predicate, while 1x1 coefficients use the exact sign of the stored value.
-
-  // da[2], da[1], da[0] from b x c
   Sign s = exact_sign_det2(b[0], b[1], c[0], c[1]);
   if (s != Sign::Zero) return s;
 
@@ -252,7 +370,6 @@ inline Sign symbolically_perturbed_sign_sorted(const double* a,
   s = exact_sign_det2(b[1], b[2], c[1], c[2]);
   if (s != Sign::Zero) return s;
 
-  // db[2], db[2]*da[1], db[2]*da[0], db[1], db[1]*da[0]
   s = exact_sign_det2(c[0], c[1], a[0], a[1]);
   if (s != Sign::Zero) return s;
 
@@ -268,9 +385,6 @@ inline Sign symbolically_perturbed_sign_sorted(const double* a,
   s = exact_sign_coord(c[2]);
   if (s != Sign::Zero) return s;
 
-  // db[0] is redundant here, same as in S2.
-
-  // dc[2], dc[2]*da[1], dc[2]*da[0], dc[2]*db[1]
   s = exact_sign_det2(a[0], a[1], b[0], b[1]);
   if (s != Sign::Zero) return s;
 
@@ -286,10 +400,15 @@ inline Sign symbolically_perturbed_sign_sorted(const double* a,
   return Sign::Positive;
 }
 
+// Exact orient3d sign with Simulation of Simplicity fallback.
+//
+// The exact predicate is evaluated first. If it is nonzero, that sign is
+// returned directly. Otherwise, the degenerate case is resolved by symbolic
+// perturbation using the supplied distinct symbolic ranks.
 inline Sign orient3d_on_sphere_sos(const double* A, int rankA,
                                    const double* B, int rankB,
                                    const double* C, int rankC) {
-  const Sign exact = orient3d_on_sphere(A, B, C);
+  const Sign exact = Kernel::orient3d_on_sphere(A, B, C);
   if (exact != Sign::Zero) {
     return exact;
   }
@@ -326,6 +445,12 @@ inline Sign orient3d_on_sphere_sos(const double* A, int rankA,
   return s;
 }
 
+// SoS version of the ray crossing predicate.
+//
+// All four orient tests are evaluated with symbolic perturbation. This removes
+// the need for an explicitly perturbed antipode and yields a deterministic
+// crossing decision from the exact combinatorial ordering of q, R, and the
+// polygon vertices.
 inline bool counts_as_ray_crossing_sos(const double* A, int rankA,
                                        const double* B, int rankB,
                                        const double* q, int rankQ,
@@ -351,32 +476,54 @@ inline bool counts_as_ray_crossing_sos(const double* A, int rankA,
 Location point_in_polygon_sphere(const double* q,
                                  const double* const* poly,
                                  std::size_t n) {
+  std::cout << "\n==== point_in_polygon_sphere debug ====\n";
+  std::cout << std::setprecision(std::numeric_limits<double>::max_digits10);
+std::cout << "q = (" << q[0] << ", " << q[1] << ", " << q[2] << ")\n";
+
   if (validate_polygon_and_check_vertex(q, poly, n)) {
+    std::cout << "result: OnVertex\n";
     return Location::OnVertex;
   }
+  std::cout << "vertex check passed\n";
 
   if (point_on_polygon_edge_exact(q, poly, n)) {
+    std::cout << "result: OnEdge\n";
     return Location::OnEdge;
   }
+  std::cout << "edge check passed\n";
 
   double r_arr[3];
   make_perturbed_antipode_simple(q, r_arr);
   const double* R = r_arr;
+
+  std::cout << "R = (" << R[0] << ", " << R[1] << ", " << R[2] << ")\n";
 
   bool inside = false;
   const double* A = poly[n - 1];
   for (std::size_t i = 0; i < n; ++i) {
     const double* B = poly[i];
 
-    if (counts_as_ray_crossing_half_open(A, B, q, R)) {
+    std::cout << "\nedge " << i << '\n';
+    std::cout << "A = (" << A[0] << ", " << A[1] << ", " << A[2] << ")\n";
+    std::cout << "B = (" << B[0] << ", " << B[1] << ", " << B[2] << ")\n";
+
+    const bool crossing = counts_as_ray_crossing_half_open(A, B, q, R);
+    std::cout << "crossing = " << crossing << '\n';
+
+    if (crossing) {
       inside = !inside;
     }
 
+    std::cout << "inside = " << inside << '\n';
     A = B;
   }
 
+  std::cout << "final result = "
+            << (inside ? "Inside" : "Outside") << '\n';
+
   return inside ? Location::Inside : Location::Outside;
 }
+
 
 Location point_in_polygon_sphere(const std::array<double, 3>& q,
                                  const std::vector<std::array<double, 3>>& poly) {
