@@ -1,11 +1,12 @@
 #pragma once
 
-#include <array>
-#include <tuple>
+#include <cmath>
+#include <limits>
 
 #include "spip/core/types.hpp"
 #include "spip/predicates/quadruple3d.hpp"
 #include "spip/predicates/eft/basic.hpp"
+#include "spip/predicates/eft/orient3d_eft.hpp"
 
 namespace spip {
 namespace predicates {
@@ -36,27 +37,16 @@ namespace eft {
 //   (a x b) · (c x d) = hi + lo.
 // -----------------------------------------------------------------------------
 template <typename T>
-inline std::tuple<T, T> compensated_quadruple_product(const V3_T<T>& a,
-                                                      const V3_T<T>& b,
-                                                      const V3_T<T>& c,
-                                                      const V3_T<T>& d) {
-  V3_T<T> ab_hi, ab_lo;
-  V3_T<T> cd_hi, cd_lo;
-
-  std::tie(ab_hi, ab_lo) = compensated_cross_product(a, b);
-  std::tie(cd_hi, cd_lo) = compensated_cross_product(c, d);
-
-  const std::array<T, 6> lhs = {
-      ab_hi[0], ab_lo[0],
-      ab_hi[1], ab_lo[1],
-      ab_hi[2], ab_lo[2]};
-
-  const std::array<T, 6> rhs = {
-      cd_hi[0], cd_lo[0],
-      cd_hi[1], cd_lo[1],
-      cd_hi[2], cd_lo[2]};
-
-  return compensated_dot_product<T, 6>(lhs, rhs);
+inline TwoTerm<T> compensated_quadruple_product(const V3_T<T>& a,
+                                                const V3_T<T>& b,
+                                                const V3_T<T>& c,
+                                                const V3_T<T>& d) {
+  const TwoTermVec3<T> ab = compensated_cross_product(a, b);
+  const TwoTermVec3<T> cd = compensated_cross_product(c, d);
+  return compensated_dot_product_6(
+      ab.hi[0], cd.hi[0], ab.lo[0], cd.lo[0],
+      ab.hi[1], cd.hi[1], ab.lo[1], cd.lo[1],
+      ab.hi[2], cd.hi[2], ab.lo[2], cd.lo[2]);
 }
 
 // -----------------------------------------------------------------------------
@@ -72,10 +62,11 @@ inline Sign quadruple3d(const V3_T<T>& a,
                         const V3_T<T>& b,
                         const V3_T<T>& c,
                         const V3_T<T>& d) {
-  T hi, lo;
-  std::tie(hi, lo) = compensated_quadruple_product(a, b, c, d);
-
-  const T value = hi + lo;
+  const TwoTerm<T> value_terms = compensated_quadruple_product(a, b, c, d);
+  const T value = value_terms.hi + value_terms.lo;
+  if (std::abs(value) < zero_tolerance<T>) {
+    return Sign::Zero;
+  }
   if (value > T(0)) {
     return Sign::Positive;
   }

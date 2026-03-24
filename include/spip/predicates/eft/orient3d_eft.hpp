@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cmath>
+#include <limits>
+
 #include "spip/core/types.hpp"
 #include "spip/predicates/orient3d.hpp"
 #include "spip/predicates/eft/basic.hpp"
@@ -7,6 +10,9 @@
 namespace spip {
 namespace predicates {
 namespace eft {
+
+template <typename T>
+inline constexpr T zero_tolerance = std::numeric_limits<T>::epsilon() / T(2);
 
 // -----------------------------------------------------------------------------
 // EFT-based sign of the scalar triple product
@@ -21,6 +27,9 @@ inline Sign orient3d_on_sphere(const V3_T<T>& a,
                                const V3_T<T>& b,
                                const V3_T<T>& c) {
   const T det = compensated_triple_product(a, b, c);
+  if (std::abs(det) < zero_tolerance<T>) {
+    return Sign::Zero;
+  }
 
   if (det > T(0)) {
     return Sign::Positive;

@@ -1,8 +1,6 @@
 #pragma once
 
-#include <array>
 #include <cstddef>
-#include <tuple>
 
 #include "spip/core/types.hpp"
 #include "spip/predicates/eft/simd_fma.hh"
@@ -10,6 +8,18 @@
 namespace spip {
 namespace predicates {
 namespace eft {
+
+template <typename T>
+struct TwoTerm {
+  T hi;
+  T lo;
+};
+
+template <typename T>
+struct TwoTermVec3 {
+  V3_T<T> hi;
+  V3_T<T> lo;
+};
 
 // -----------------------------------------------------------------------------
 // Error-free product decomposition.
@@ -22,10 +32,10 @@ namespace eft {
 // the exact product in a two-term expansion.
 // -----------------------------------------------------------------------------
 template <typename T>
-inline std::tuple<T, T> two_prod_fma(T a, T b) {
+inline TwoTerm<T> two_prod_fma(T a, T b) {
   const T hi = a * b;
   const T lo = ::simd_fma(a, b, -hi);
-  return std::make_tuple(hi, lo);
+  return {hi, lo};
 }
 
 // -----------------------------------------------------------------------------
@@ -39,11 +49,11 @@ inline std::tuple<T, T> two_prod_fma(T a, T b) {
 // expansion.
 // -----------------------------------------------------------------------------
 template <typename T>
-inline std::tuple<T, T> two_sum(T a, T b) {
+inline TwoTerm<T> two_sum(T a, T b) {
   const T hi = a + b;
   const T z = hi - a;
   const T lo = (a - (hi - z)) + (b - z);
-  return std::make_tuple(hi, lo);
+  return {hi, lo};
 }
 
 // -----------------------------------------------------------------------------
@@ -62,18 +72,89 @@ inline std::tuple<T, T> two_sum(T a, T b) {
 // accumulates all residual terms into lo.
 // -----------------------------------------------------------------------------
 template <typename T>
-inline std::tuple<T, T> accu_dop(T a, T b, T c, T d) {
-  T p1, e1;
-  std::tie(p1, e1) = two_prod_fma(a, b);
+inline TwoTerm<T> accu_dop(T a, T b, T c, T d) {
+  const TwoTerm<T> prod1 = two_prod_fma(a, b);
+  const TwoTerm<T> prod2_neg = two_prod_fma(c, -d);
+  const TwoTerm<T> sum = two_sum(prod1.hi, prod2_neg.hi);
+  return {sum.hi, prod1.lo + (sum.lo + prod2_neg.lo)};
+}
 
-  T p2_neg, e2;
-  std::tie(p2_neg, e2) = two_prod_fma(c, -d);
+template <typename T>
+inline TwoTerm<T> compensated_dot_product_6(
+    T a0, T b0, T a1, T b1, T a2, T b2,
+    T a3, T b3, T a4, T b4, T a5, T b5) {
+  TwoTerm<T> sum = two_prod_fma(a0, b0);
 
-  T hi, carry;
-  std::tie(hi, carry) = two_sum(p1, p2_neg);
+  const TwoTerm<T> prod1 = two_prod_fma(a1, b1);
+  const TwoTerm<T> add1 = two_sum(sum.hi, prod1.hi);
+  sum.hi = add1.hi;
+  sum.lo += prod1.lo + add1.lo;
 
-  const T lo = e1 + (carry + e2);
-  return std::make_tuple(hi, lo);
+  const TwoTerm<T> prod2 = two_prod_fma(a2, b2);
+  const TwoTerm<T> add2 = two_sum(sum.hi, prod2.hi);
+  sum.hi = add2.hi;
+  sum.lo += prod2.lo + add2.lo;
+
+  const TwoTerm<T> prod3 = two_prod_fma(a3, b3);
+  const TwoTerm<T> add3 = two_sum(sum.hi, prod3.hi);
+  sum.hi = add3.hi;
+  sum.lo += prod3.lo + add3.lo;
+
+  const TwoTerm<T> prod4 = two_prod_fma(a4, b4);
+  const TwoTerm<T> add4 = two_sum(sum.hi, prod4.hi);
+  sum.hi = add4.hi;
+  sum.lo += prod4.lo + add4.lo;
+
+  const TwoTerm<T> prod5 = two_prod_fma(a5, b5);
+  const TwoTerm<T> add5 = two_sum(sum.hi, prod5.hi);
+  sum.hi = add5.hi;
+  sum.lo += prod5.lo + add5.lo;
+
+  return sum;
+}
+
+template <typename T>
+inline TwoTerm<T> compensated_dot_product_8(
+    T a0, T b0, T a1, T b1, T a2, T b2, T a3, T b3,
+    T a4, T b4, T a5, T b5, T a6, T b6, T a7, T b7) {
+  TwoTerm<T> sum = two_prod_fma(a0, b0);
+
+  const TwoTerm<T> prod1 = two_prod_fma(a1, b1);
+  const TwoTerm<T> add1 = two_sum(sum.hi, prod1.hi);
+  sum.hi = add1.hi;
+  sum.lo += prod1.lo + add1.lo;
+
+  const TwoTerm<T> prod2 = two_prod_fma(a2, b2);
+  const TwoTerm<T> add2 = two_sum(sum.hi, prod2.hi);
+  sum.hi = add2.hi;
+  sum.lo += prod2.lo + add2.lo;
+
+  const TwoTerm<T> prod3 = two_prod_fma(a3, b3);
+  const TwoTerm<T> add3 = two_sum(sum.hi, prod3.hi);
+  sum.hi = add3.hi;
+  sum.lo += prod3.lo + add3.lo;
+
+  const TwoTerm<T> prod4 = two_prod_fma(a4, b4);
+  const TwoTerm<T> add4 = two_sum(sum.hi, prod4.hi);
+  sum.hi = add4.hi;
+  sum.lo += prod4.lo + add4.lo;
+
+  const TwoTerm<T> prod5 = two_prod_fma(a5, b5);
+  const TwoTerm<T> add5 = two_sum(sum.hi, prod5.hi);
+  sum.hi = add5.hi;
+  sum.lo += prod5.lo + add5.lo;
+
+  const TwoTerm<T> prod6 = two_prod_fma(a6, b6);
+  const TwoTerm<T> add6 = two_sum(sum.hi, prod6.hi);
+  sum.hi = add6.hi;
+  sum.lo += prod6.lo + add6.lo;
+
+  const TwoTerm<T> prod7 = two_prod_fma(a7, b7);
+  const TwoTerm<T> add7 = two_sum(sum.hi, prod7.hi);
+  sum.hi = add7.hi;
+  sum.lo += prod7.lo + add7.lo;
+
+  return sum;
 }
 
 // -----------------------------------------------------------------------------
@@ -88,23 +169,25 @@ inline std::tuple<T, T> accu_dop(T a, T b, T c, T d) {
 // compensated representation of the dot product.
 // -----------------------------------------------------------------------------
 template <typename T, std::size_t N>
-inline std::tuple<T, T> compensated_dot_product(const std::array<T, N>& a,
-                                                const std::array<T, N>& b) {
-  T sum_hi, sum_lo;
-  std::tie(sum_hi, sum_lo) = two_prod_fma(a[0], b[0]);
-
-  for (std::size_t i = 1; i < N; ++i) {
-    T prod_hi, prod_lo;
-    std::tie(prod_hi, prod_lo) = two_prod_fma(a[i], b[i]);
-
-    T new_hi, sigma;
-    std::tie(new_hi, sigma) = two_sum(sum_hi, prod_hi);
-
-    sum_hi = new_hi;
-    sum_lo += prod_lo + sigma;
+inline TwoTerm<T> compensated_dot_product(const T (&a)[N], const T (&b)[N]) {
+  if constexpr (N == 6) {
+    return compensated_dot_product_6(
+        a[0], b[0], a[1], b[1], a[2], b[2],
+        a[3], b[3], a[4], b[4], a[5], b[5]);
+  } else if constexpr (N == 8) {
+    return compensated_dot_product_8(
+        a[0], b[0], a[1], b[1], a[2], b[2], a[3], b[3],
+        a[4], b[4], a[5], b[5], a[6], b[6], a[7], b[7]);
   }
 
-  return std::make_tuple(sum_hi, sum_lo);
+  TwoTerm<T> sum = two_prod_fma(a[0], b[0]);
+  for (std::size_t i = 1; i < N; ++i) {
+    const TwoTerm<T> prod = two_prod_fma(a[i], b[i]);
+    const TwoTerm<T> add = two_sum(sum.hi, prod.hi);
+    sum.hi = add.hi;
+    sum.lo += prod.lo + add.lo;
+  }
+  return sum;
 }
 
 // -----------------------------------------------------------------------------
@@ -136,76 +219,49 @@ inline std::tuple<T, T> compensated_dot_product(const std::array<T, N>& a,
 // and the resulting component sum is evaluated by a compensated dot product.
 // -----------------------------------------------------------------------------
 template <typename T>
-inline std::pair<V3_T<T>, V3_T<T>> compensated_cross_product(
+inline TwoTermVec3<T> compensated_cross_product(
     const V3_T<T>& v1, const V3_T<T>& ev1,
     const V3_T<T>& v2, const V3_T<T>& ev2) {
-  V3_T<T> hi;
-  V3_T<T> lo;
+  TwoTermVec3<T> result;
 
   const bool zero_ev1 = (ev1[0] == T(0) && ev1[1] == T(0) && ev1[2] == T(0));
   const bool zero_ev2 = (ev2[0] == T(0) && ev2[1] == T(0) && ev2[2] == T(0));
 
   if (zero_ev1 && zero_ev2) {
-    T h, l;
-
-    std::tie(h, l) = accu_dop(v1[1], v2[2], v1[2], v2[1]);
-    hi[0] = h;
-    lo[0] = l;
-
-    std::tie(h, l) = accu_dop(v1[2], v2[0], v1[0], v2[2]);
-    hi[1] = h;
-    lo[1] = l;
-
-    std::tie(h, l) = accu_dop(v1[0], v2[1], v1[1], v2[0]);
-    hi[2] = h;
-    lo[2] = l;
-
-    return std::make_pair(hi, lo);
+    const TwoTerm<T> x = accu_dop(v1[1], v2[2], v1[2], v2[1]);
+    const TwoTerm<T> y = accu_dop(v1[2], v2[0], v1[0], v2[2]);
+    const TwoTerm<T> z = accu_dop(v1[0], v2[1], v1[1], v2[0]);
+    result.hi[0] = x.hi;
+    result.lo[0] = x.lo;
+    result.hi[1] = y.hi;
+    result.lo[1] = y.lo;
+    result.hi[2] = z.hi;
+    result.lo[2] = z.lo;
+    return result;
   }
 
-  {
-    const std::array<T, 8> a = {
-        v1[1],  v1[1],  ev1[1],  ev1[1],
-       -v1[2], -v1[2], -ev1[2], -ev1[2]};
-    const std::array<T, 8> b = {
-        v2[2],  ev2[2], v2[2],  ev2[2],
-        v2[1],  ev2[1], v2[1],  ev2[1]};
+  result.hi.setZero();
+  result.lo.setZero();
 
-    T h, l;
-    std::tie(h, l) = compensated_dot_product<T, 8>(a, b);
-    hi[0] = h;
-    lo[0] = l;
-  }
+  const TwoTerm<T> x = compensated_dot_product_8(
+      v1[1], v2[2], v1[1], ev2[2], ev1[1], v2[2], ev1[1], ev2[2],
+      -v1[2], v2[1], -v1[2], ev2[1], -ev1[2], v2[1], -ev1[2], ev2[1]);
+  result.hi[0] = x.hi;
+  result.lo[0] = x.lo;
 
-  {
-    const std::array<T, 8> a = {
-        v1[2],  v1[2],  ev1[2],  ev1[2],
-       -v1[0], -v1[0], -ev1[0], -ev1[0]};
-    const std::array<T, 8> b = {
-        v2[0],  ev2[0], v2[0],  ev2[0],
-        v2[2],  ev2[2], v2[2],  ev2[2]};
+  const TwoTerm<T> y = compensated_dot_product_8(
+      v1[2], v2[0], v1[2], ev2[0], ev1[2], v2[0], ev1[2], ev2[0],
+      -v1[0], v2[2], -v1[0], ev2[2], -ev1[0], v2[2], -ev1[0], ev2[2]);
+  result.hi[1] = y.hi;
+  result.lo[1] = y.lo;
 
-    T h, l;
-    std::tie(h, l) = compensated_dot_product<T, 8>(a, b);
-    hi[1] = h;
-    lo[1] = l;
-  }
+  const TwoTerm<T> z = compensated_dot_product_8(
+      v1[0], v2[1], v1[0], ev2[1], ev1[0], v2[1], ev1[0], ev2[1],
+      -v1[1], v2[0], -v1[1], ev2[0], -ev1[1], v2[0], -ev1[1], ev2[0]);
+  result.hi[2] = z.hi;
+  result.lo[2] = z.lo;
 
-  {
-    const std::array<T, 8> a = {
-        v1[0],  v1[0],  ev1[0],  ev1[0],
-       -v1[1], -v1[1], -ev1[1], -ev1[1]};
-    const std::array<T, 8> b = {
-        v2[1],  ev2[1], v2[1],  ev2[1],
-        v2[0],  ev2[0], v2[0],  ev2[0]};
-
-    T h, l;
-    std::tie(h, l) = compensated_dot_product<T, 8>(a, b);
-    hi[2] = h;
-    lo[2] = l;
-  }
-
-  return std::make_pair(hi, lo);
+  return result;
 }
 
 // -----------------------------------------------------------------------------
@@ -217,7 +273,7 @@ inline std::pair<V3_T<T>, V3_T<T>> compensated_cross_product(
 // componentwise, with zero input perturbation vectors.
 // -----------------------------------------------------------------------------
 template <typename T>
-inline std::pair<V3_T<T>, V3_T<T>> compensated_cross_product(
+inline TwoTermVec3<T> compensated_cross_product(
     const V3_T<T>& v1, const V3_T<T>& v2) {
   const V3_T<T> zero(T(0), T(0), T(0));
   return compensated_cross_product(v1, zero, v2, zero);
@@ -245,20 +301,14 @@ template <typename T>
 inline T compensated_triple_product(const V3_T<T>& a,
                                     const V3_T<T>& b,
                                     const V3_T<T>& c) {
-  T h0, l0;
-  T h1, l1;
-  T h2, l2;
-
-  std::tie(h0, l0) = accu_dop(b[1], c[2], b[2], c[1]);
-  std::tie(h1, l1) = accu_dop(b[2], c[0], b[0], c[2]);
-  std::tie(h2, l2) = accu_dop(b[0], c[1], b[1], c[0]);
-
-  const std::array<T, 6> lhs = {a[0], a[0], a[1], a[1], a[2], a[2]};
-  const std::array<T, 6> rhs = {h0, l0, h1, l1, h2, l2};
-
-  T hi, lo;
-  std::tie(hi, lo) = compensated_dot_product<T, 6>(lhs, rhs);
-  return hi + lo;
+  const TwoTerm<T> x = accu_dop(b[1], c[2], b[2], c[1]);
+  const TwoTerm<T> y = accu_dop(b[2], c[0], b[0], c[2]);
+  const TwoTerm<T> z = accu_dop(b[0], c[1], b[1], c[0]);
+  const TwoTerm<T> dot = compensated_dot_product_6(
+      a[0], x.hi, a[0], x.lo,
+      a[1], y.hi, a[1], y.lo,
+      a[2], z.hi, a[2], z.lo);
+  return dot.hi + dot.lo;
 }
 
 }  // namespace eft

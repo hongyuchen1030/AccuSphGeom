@@ -1,5 +1,7 @@
 #include <cmath>
+#include <cstdint>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 #include <array>
@@ -69,6 +71,23 @@ int main() {
   const Location loc_vertex = point_in_polygon_sphere(q_vertex, poly);
   const Location loc_edge = point_in_polygon_sphere(q_edge, poly);
   const Location loc_inside = point_in_polygon_sphere(q_inside, poly);
+  const std::vector<std::int64_t> vertex_ids = {10, 20, 30};
+  const std::array<double, 3> r_outside = normalize(-1.0, -1.0, -1.0);
+  const Location loc_inside_tier3 =
+      point_in_polygon_sphere(q_inside, poly, vertex_ids);
+  const Location loc_inside_tier2 =
+      point_in_polygon_sphere(q_inside, 40, poly, vertex_ids);
+  const Location loc_inside_tier1 =
+      point_in_polygon_sphere(q_inside, 40, r_outside, 50, poly, vertex_ids);
+  const std::vector<std::int64_t> overflow_vertex_ids = {
+      std::numeric_limits<std::int64_t>::max() - 2,
+      std::numeric_limits<std::int64_t>::max() - 1,
+      std::numeric_limits<std::int64_t>::max(),
+  };
+  const Location loc_inside_overflow_tier3 =
+      point_in_polygon_sphere(q_inside, poly, overflow_vertex_ids);
+  const Location loc_inside_overflow_tier2 =
+      point_in_polygon_sphere(q_inside, 7, poly, overflow_vertex_ids);
 
   expect_equal(loc_vertex, Location::OnVertex,
                "adaptive/no-global-id: query on vertex");
@@ -76,6 +95,16 @@ int main() {
                "adaptive/no-global-id: query on edge");
   expect_equal(loc_inside, Location::Inside,
                "adaptive/no-global-id: query strictly inside");
+  expect_equal(loc_inside_tier3, Location::Inside,
+               "adaptive/tier3: query strictly inside");
+  expect_equal(loc_inside_tier2, Location::Inside,
+               "adaptive/tier2: query strictly inside");
+  expect_equal(loc_inside_tier1, Location::Inside,
+               "adaptive/tier1: query strictly inside");
+  expect_equal(loc_inside_overflow_tier3, Location::Inside,
+               "adaptive/tier3 overflow->mex: query strictly inside");
+  expect_equal(loc_inside_overflow_tier2, Location::Inside,
+               "adaptive/tier2 overflow->mex: query strictly inside");
 
   return EXIT_SUCCESS;
 }

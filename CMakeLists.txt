@@ -77,4 +77,10 @@ if(SPIP_BUILD_TESTS)
   )
   target_link_libraries(spip_test_pip_robust PRIVATE spip)
   add_test(NAME spip_test_pip_robust COMMAND spip_test_pip_robust)
+
+  add_executable(spip_test_pip_complicated
+    tests/test_pip_complicated.cpp
+  )
+  target_link_libraries(spip_test_pip_complicated PRIVATE spip)
+  add_test(NAME spip_test_pip_complicated COMMAND spip_test_pip_complicated)
 endif()
