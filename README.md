@@ -26,7 +26,10 @@ Key properties:
 This repository contains the implementation. The associated paper discusses the
 algorithms in more detail and provides broader algorithmic context:
 
-- https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/
+
+- Chen, H. (2026). Accurate and Robust Algorithms for Spherical Polygon
+  Operations. EGUsphere preprint.
+  https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/
 
 
 ## 2. Core Algorithm (Spherical PIP)
@@ -103,15 +106,21 @@ The repository provides two precision pipelines.
 - same high-level algorithmic structure
 - tolerance-based zero detection
 
-Important design rule:
+**Important design rule:**
 
-- the algorithm is intended to be identical across pipelines
-- only the numerical evaluation of predicate signs differs
+- The algorithm is intended to be identical across pipelines.
+- Only the numerical evaluation of predicate signs differs.
 
 The EFT implementation is largely informed by:
 
-- https://arxiv.org/abs/2510.09892
-- https://epubs.siam.org/doi/10.1137/030601818
+- Chen, H., Ullrich, P. A., and Panetta, J. (2025):  
+  *Fast and Accurate Intersections on a Sphere*,  
+  arXiv:2510.09892, https://arxiv.org/abs/2510.09892.
+
+- Ogita, T., Rump, S. M., and Oishi, S. (2005):  
+  *Accurate sum and dot product*,  
+  SIAM Journal on Scientific Computing, 26(6), 1955–1988,  
+  https://doi.org/10.1137/030601818.
 
 Both are related to:
 
