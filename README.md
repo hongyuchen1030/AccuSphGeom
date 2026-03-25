@@ -542,7 +542,7 @@ for the corresponding visualization notebook.
 
 ## 10. Tests and Visualization
 
-Tests live in [tests/](/global/u1/h/hyvchen/spherical-pip/tests) and in the
+Tests live in [tests/](https://github.com/hongyuchen1030/Spherical-Point-In-Polygon/tree/main/tests) and in the
 repository test directory on GitHub:
 
 - https://github.com/hongyuchen1030/Spherical-Point-In-Polygon/tree/main/tests
@@ -555,7 +555,7 @@ Notable coverage includes:
 - a more complicated polygon/query configuration
 
 The Mathematica notebook
-[tests/test_pip_complicated_visualization.nb](/global/u1/h/hyvchen/spherical-pip/tests/test_pip_complicated_visualization.nb)
+[tests/test_pip_complicated_visualization.nb](https://github.com/hongyuchen1030/Spherical-Point-In-Polygon/tree/main/tests/test_pip_complicated_visualization.nb)
 visualizes:
 
 - the polygon
@@ -591,7 +591,7 @@ implementation.
 Notes:
 
 - the vendored `predicates.c` is public domain
-- see [third_party/LICENSE_shewchuk.txt](/global/u1/h/hyvchen/spherical-pip/third_party/LICENSE_shewchuk.txt)
+- see [third_party/LICENSE_shewchuk.txt](https://github.com/hongyuchen1030/Spherical-Point-In-Polygon/tree/main/third_party/LICENSE_shewchuk.txt)
 
 ### 11.3 Simulation of Simplicity (SoS)
 
