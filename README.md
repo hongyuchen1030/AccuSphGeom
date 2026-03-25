@@ -73,6 +73,47 @@ const std::int64_t vertex_ids[3] = {10, 20, 30};
 const auto loc = spip::pip::point_in_polygon_sphere(q, 40, R, 50, poly, vertex_ids, 3);
 ```
 
+
+This library provides a complete API coverage across precision models, robustness modes, and container interfaces. In total, there are **24 API combinations**, formed by:
+
+* **2 precision models**:
+
+  * robust (adaptive exact predicates)
+  * EFT (compensated arithmetic)
+
+* **4 robustness modes**:
+
+  * no global ID
+  * Tier 1 (full global robustness)
+  * Tier 2 (semi-specified global robustness)
+  * Tier 3 (local/internal robustness)
+
+* **3 API overload families**:
+
+  * raw pointer
+  * std::array
+  * std::vector
+
+These combinations ensure that users can choose the appropriate trade-off between robustness, performance, and interface convenience.
+
+| Precision Model | Robustness Mode | Raw Pointer API | std::array API | std::vector API |
+| --------------- | --------------- | --------------- | -------------- | --------------- |
+| Robust          | No Global ID    | ✓               | ✓              | ✓               |
+| Robust          | Tier 1          | ✓               | ✓              | ✓               |
+| Robust          | Tier 2          | ✓               | ✓              | ✓               |
+| Robust          | Tier 3          | ✓               | ✓              | ✓               |
+| EFT             | No Global ID    | ✓               | ✓              | ✓               |
+| EFT             | Tier 1          | ✓               | ✓              | ✓               |
+| EFT             | Tier 2          | ✓               | ✓              | ✓               |
+| EFT             | Tier 3          | ✓               | ✓              | ✓               |
+
+Total combinations:
+2 (precision) × 4 (robustness) × 3 (overloads) = **24 API cases**
+
+All of these combinations are explicitly tested in:
+
+[tests/test_library_usage.cpp](tests/test_library_usage.cpp)
+
 -----
 
 ## 2\. Core Algorithm (Spherical PIP)
@@ -148,17 +189,94 @@ Detailed tests are located in [`tests/`](https://www.google.com/search?q=%5Bhttp
 
 -----
 
-## 8\. References & Acknowledgements
+## 8. References and Acknowledgements
 
-### Primary Citation
+### 11.1 Associated Paper
 
-  * **Chen, H. (2026).** *Accurate and Robust Algorithms for Spherical Polygon Operations.* EGUsphere preprint. [https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/](https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/)
+The algorithms implemented in this repository are discussed in detail in:
 
-### Technical Background
+- Chen, H. (2026). Accurate and Robust Algorithms for Spherical Polygon
+  Operations. EGUsphere preprint.
+  https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/
 
-  * **Robust Predicates:** Shewchuk (1997). Adaptive Precision Floating-Point Arithmetic.
-  * **Simulation of Simplicity:** Edelsbrunner & Mucke (1990).
-  * **Half-Open Rule:** Hormann & Agathos (2001).
-  * **EFT:** Ogita, Rump, & Oishi (2005) and Kahan (1996).
-  * **Backend:** Eigen library.
+This repository contains the implementation. The paper provides the full
+algorithmic context and derivations.
+
+### 11.2 Robust Geometric Predicates (Shewchuk)
+
+The robust pipeline uses Jonathan Shewchuk's adaptive predicates for core
+orientation-sign evaluation, including the vendored `predicates.c`
+implementation.
+
+- Shewchuk, J. R. (1997). Adaptive Precision Floating-Point Arithmetic and Fast
+  Robust Geometric Predicates. Discrete & Computational Geometry, 18(3),
+  305-363.
+
+Notes:
+
+- the vendored `predicates.c` is public domain
+- see [third_party/LICENSE_shewchuk.txt](third_party/LICENSE_shewchuk.txt)
+
+### 11.3 Simulation of Simplicity (SoS)
+
+Simulation of Simplicity is used for global-ID degeneracy resolution in the
+Tier 1, Tier 2, and Tier 3 global-ID paths.
+
+- Edelsbrunner, H., & Mucke, E. P. (1990). Simulation of Simplicity: A
+  Technique to Cope with Degenerate Cases in Geometric Algorithms. ACM
+  Transactions on Graphics, 9(1), 66-104.
+  https://doi.org/10.1145/77635.77639
+
+### 11.4 Half-Open Rule
+
+The non-global-ID branch uses a deterministic half-open convention for
+ray-vertex tie-breaking.
+
+- Hormann, K., & Agathos, A. (2001). The Point in Polygon Problem for
+  Arbitrary Polygons. Computational Geometry, 20(3), 131-144.
+  https://doi.org/10.1016/S0925-7721(01)00012-8
+
+Important note:
+
+- the original work is planar
+- this repository applies the rule on the sphere
+- no global theoretical proof is claimed here for the spherical case
+- the rule is used as deterministic tie-breaking in non-global-ID mode
+- for full robustness, users should use Tier 1 global-ID mode
+
+### 11.5 Geogram Multiprecision
+
+Geogram multiprecision components are used as the exact fallback for predicate
+evaluation in the robust pipeline.
+
+- Geogram PSM exact arithmetic
+- Geogram PCK-related components included in the vendored code layout used by
+  this project
+
+### 11.6 Error-Free Transformations (EFT)
+
+The EFT pipeline is informed by the compensated-arithmetic literature used for
+accurate determinant and sign evaluation.
+
+- Ogita, T., Rump, S. M., & Oishi, S. (2005). Accurate Sum and Dot Product.
+  SIAM Journal on Scientific Computing, 26(6), 1955-1988.
+  https://doi.org/10.1137/030601818
+- Additional reference: https://arxiv.org/abs/2510.09892
+- Based on: Kahan, W. (1996). Lecture Notes on the Status of IEEE 754.
+  http://www.cs.berkeley.edu/~wkahan/ieee754status/IEEE754.PDF
+
+### 11.7 Linear Algebra Backend
+
+The project depends on the Eigen library for fixed-size vectors and the
+templated EFT implementation.
+
+- Eigen library
+
+### 11.8 Summary Mapping
+
+- robust pipeline -> Shewchuk + Geogram
+- SoS -> Edelsbrunner & Mucke
+- non-global-ID -> Hormann & Agathos (adapted)
+- EFT -> Ogita-Rump-Oishi + Kahan
+- spherical algorithm -> Chen (2026)
 
