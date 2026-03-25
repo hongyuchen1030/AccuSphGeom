@@ -1,8 +1,8 @@
-# spherical-pip
+# Spherical-Point-In-Polygon
 
 ## 1. Project Overview
 
-`spherical-pip` is a C++ library for:
+`Spherical-Point-In-Polygon` is a C++ library for:
 
 - spherical point-in-polygon (PIP)
 - robust geometric predicates on the sphere
@@ -17,10 +17,16 @@ The main target problem is classifying a query point on the unit sphere as:
 Key properties:
 
 - robust to common degeneracies
+- three robustness tiers when global IDs are available
 - two precision pipelines:
   - a pure robust pipeline
   - an EFT pipeline based on compensated arithmetic
 - designed for correctness first, with performance-aware implementation choices
+
+This repository contains the implementation. The associated paper discusses the
+algorithms in more detail and provides broader algorithmic context:
+
+- https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/
 
 
 ## 2. Core Algorithm (Spherical PIP)
@@ -44,7 +50,7 @@ For each polygon edge `AB`, the crossing logic uses four orientation signs:
 
 In the nondegenerate case, the implementation uses the strict 4-sign crossing theorem: the arcs `qR` and `AB` cross if and only if the endpoint orientations are strictly separated on both supporting great circles. In code, this is the branch where all four signs are nonzero and the sign pattern is checked directly.
 
-When `s_qR_A` or `s_qR_B` is zero in the non-global-ID mode, the algorithm falls back to a half-open convention rather than symbolic perturbation. This avoids double counting at ray/vertex configurations.
+When `s_qR_A` or `s_qR_B` is zero in the non-global-ID mode, the algorithm falls back to a half-open convention rather than symbolic perturbation. This is a deterministic local tie-breaking rule for degenerate ray/vertex configurations and avoids double counting.
 
 Boundary handling is performed before parity counting:
 
@@ -78,7 +84,7 @@ Interpretation:
 What users should do instead:
 
 - split the polygon into smaller pieces, or
-- use a global-ID SoS mode so endpoint degeneracies can be resolved symbolically where applicable
+- use Tier 1 global-ID mode so endpoint degeneracies can be resolved symbolically where applicable
 
 
 ## 4. Precision Pipelines
@@ -102,6 +108,18 @@ Important design rule:
 - the algorithm is intended to be identical across pipelines
 - only the numerical evaluation of predicate signs differs
 
+The EFT implementation is largely informed by:
+
+- https://arxiv.org/abs/2510.09892
+- https://epubs.siam.org/doi/10.1137/030601818
+
+Both are related to:
+
+- W. Kahan, "Lecture Notes on the Status of IEEE-754", 1996,
+  http://www.cs.berkeley.edu/~wkahan/ieee754status/IEEE754.PDF
+
+in particular for the 2x2 determinant and FMA idea.
+
 
 ## 5. Non-global-ID Strategy
 
@@ -109,6 +127,7 @@ When global IDs are not provided:
 
 - no Simulation of Simplicity (SoS) is used
 - degeneracy is handled by a deterministic geometric rule
+- this is local deterministic tie-breaking, not full global symbolic robustness
 
 The non-global-ID crossing policy is:
 
@@ -131,16 +150,24 @@ crossing only if:
 (below_a XOR below_b)
 ```
 
-This is a standard half-open convention in the style of Hormann and Agathos (2001).
+This is a standard half-open convention in the style of Hormann and Agathos
+(2001).
 
 Important limitation:
 
-- no symbolic perturbation is used in this mode
+- Hormann and Agathos discuss the half-open rule in the planar setting
+- this repository works on the spherical surface
+- this repository does not currently claim a global theoretical proof for the
+  spherical no-global-ID tie-breaking rule
+- in this repository, the half-open rule is used as a deterministic tie-breaking
+  convention when no global ID is present and a degenerate ray/vertex case
+  occurs
 - behavior is deterministic and consistent
 - but it is not equivalent to full global symbolic robustness
+- if full global robustness is required, use Tier 1 global-ID mode
 
 
-## 6. Robustness Tiers With Using Global ID
+## 6. Robustness Tiers With Global IDs
 
 When global IDs are available, the library supports three robustness tiers.
 
@@ -318,7 +345,15 @@ visualizes:
 That notebook is the visualization companion for the complicated PIP test case.
 
 
-## 11. Acknowledgements
+## 11. References and Acknowledgements
+
+The implementation in this repository is discussed in more detail in the
+associated paper:
+
+- https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/
+
+This repository contains the implementation. Users who need the full algorithmic
+context should consult the paper.
 
 This repository uses Jonathan Shewchuk’s robust geometric predicates:
 
@@ -334,3 +369,33 @@ This repository also uses Geogram multiprecision components:
 - Geogram PCK-related support included in the vendored code layout used by this project
 
 The project depends on Eigen for fixed-size vector and packet-related types used in the C++ implementation.
+
+Simulation of Simplicity is from:
+
+- Herbert Edelsbrunner and Ernst P. Mücke,
+  "Simulation of Simplicity: A Technique to Cope with Degenerate Cases in
+  Geometric Algorithms",
+  ACM Transactions on Graphics, 1990
+- https://dl.acm.org/doi/abs/10.1145/77635.77639
+
+The half-open rule discussion refers to:
+
+- Kai Hormann, Alexander Agathos,
+  "The point in polygon problem for arbitrary polygons",
+  Computational Geometry,
+  Volume 20, Issue 3,
+  2001,
+  Pages 131-144,
+  ISSN 0925-7721,
+  https://doi.org/10.1016/S0925-7721(01)00012-8
+
+Important note:
+
+- Hormann and Agathos discuss the half-open rule in the planar setting
+- this repository works on the spherical surface
+- this repository does not currently claim a global theoretical proof for the
+  spherical no-global-ID tie-breaking rule
+- in this repository, the half-open rule is used as a deterministic tie-breaking
+  convention when no global ID is present and a degenerate ray/vertex case
+  occurs
+- if full global robustness is required, users should use Tier 1 global-ID mode
