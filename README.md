@@ -267,9 +267,67 @@ Constraints:
 - internal IDs are always nonnegative
 
 
-## 9. Usage (Minimal)
+## 9. API Reference and Usage
 
-Basic point-in-polygon call without global IDs:
+### 9.1 Precision Pipelines
+
+The library provides two precision pipelines:
+
+- robust pipeline: the default double-based implementation
+- EFT pipeline: templated evaluation using `spip::V3_T<T>` and compensated arithmetic
+
+The algorithm is identical in both pipelines. Only the numerical evaluation of
+predicate signs differs.
+
+Overload families:
+
+- robust pipeline: raw pointers, `std::array<double, 3>` with
+  `std::vector<std::array<double, 3>>`, and `std::vector<double>` with
+  `std::vector<std::vector<double>>`
+- EFT pipeline: `V3_T<T>*`, `std::vector<V3_T<T>>`, and
+  `std::array<V3_T<T>, N>`
+
+### 9.2 Return Type
+
+`spip::pip::Location` has four values:
+
+- `Location::Inside`
+- `Location::Outside`
+- `Location::OnEdge`
+- `Location::OnVertex`
+
+### 9.3 Basic Usage (No Global ID)
+
+#### 9.3.1 Robust Pipeline (No Global ID)
+
+Raw pointer overload:
+
+```cpp
+#include "spip/algorithms/point_in_polygon_sphere.hpp"
+
+double q[3] = {0.5773502691896257, 0.5773502691896257, 0.5773502691896257};
+double poly_storage[3][3] = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+const double* poly[3] = {poly_storage[0], poly_storage[1], poly_storage[2]};
+
+const auto loc = spip::pip::point_in_polygon_sphere(q, poly, 3);
+```
+
+`std::vector` overload:
+
+```cpp
+#include <vector>
+
+#include "spip/algorithms/point_in_polygon_sphere.hpp"
+
+const std::vector<double> q = {0.5773502691896257, 0.5773502691896257,
+                               0.5773502691896257};
+const std::vector<std::vector<double>> poly = {
+    {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+
+const auto loc = spip::pip::point_in_polygon_sphere(q, poly);
+```
+
+`std::array` overload:
 
 ```cpp
 #include <array>
@@ -277,24 +335,83 @@ Basic point-in-polygon call without global IDs:
 
 #include "spip/algorithms/point_in_polygon_sphere.hpp"
 
-int main() {
-  const std::vector<std::array<double, 3>> poly = {
-      {1.0, 0.0, 0.0},
-      {0.0, 1.0, 0.0},
-      {0.0, 0.0, 1.0},
-  };
-  const std::array<double, 3> q = {
-      0.5773502691896257,
-      0.5773502691896257,
-      0.5773502691896257,
-  };
+const std::array<double, 3> q = {0.5773502691896257, 0.5773502691896257,
+                                 0.5773502691896257};
+const std::vector<std::array<double, 3>> poly = {
+    {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
 
-  const spip::pip::Location loc = spip::pip::point_in_polygon_sphere(q, poly);
-  return static_cast<int>(loc);
-}
+const auto loc = spip::pip::point_in_polygon_sphere(q, poly);
 ```
 
-Global-ID call, Tier 2:
+#### 9.3.2 EFT Pipeline (No Global ID)
+
+`V3_T<T>` pointer overload:
+
+```cpp
+#include <vector>
+
+#include "spip/algorithms/point_in_polygon_sphere.hpp"
+
+using spip::V3_T;
+
+const V3_T<double> q(0.5773502691896257, 0.5773502691896257, 0.5773502691896257);
+const V3_T<double> poly[3] = {
+    V3_T<double>(1.0, 0.0, 0.0),
+    V3_T<double>(0.0, 1.0, 0.0),
+    V3_T<double>(0.0, 0.0, 1.0),
+};
+
+const auto loc = spip::pip::point_in_polygon_sphere(q, poly, 3);
+```
+
+`std::vector<V3_T<T>>` overload:
+
+```cpp
+#include <vector>
+
+#include "spip/algorithms/point_in_polygon_sphere.hpp"
+
+using spip::V3_T;
+
+const V3_T<double> q(0.5773502691896257, 0.5773502691896257, 0.5773502691896257);
+const std::vector<V3_T<double>> poly = {
+    V3_T<double>(1.0, 0.0, 0.0),
+    V3_T<double>(0.0, 1.0, 0.0),
+    V3_T<double>(0.0, 0.0, 1.0),
+};
+
+const auto loc = spip::pip::point_in_polygon_sphere(q, poly);
+```
+
+### 9.4 Global-ID Usage (Robust Pipeline)
+
+Global-ID overloads enable Simulation of Simplicity for ray-vertex endpoint
+degeneracies.
+
+#### Tier 1: Full Global Robustness
+
+Caller provides polygon vertices, polygon IDs, `q` with `q_id`, and explicit
+`R` with `r_id`.
+
+```cpp
+#include <cstdint>
+
+#include "spip/algorithms/point_in_polygon_sphere.hpp"
+
+double q[3] = {0.5773502691896257, 0.5773502691896257, 0.5773502691896257};
+double R[3] = {-0.5773502691896257, -0.5773502691896257, -0.5773502691896257};
+double poly_storage[3][3] = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+const double* poly[3] = {poly_storage[0], poly_storage[1], poly_storage[2]};
+const std::int64_t vertex_ids[3] = {10, 20, 30};
+
+const auto loc =
+    spip::pip::point_in_polygon_sphere(q, 40, R, 50, poly, vertex_ids, 3);
+```
+
+#### Tier 2: Semi-Specified Robustness
+
+Caller provides polygon vertices and IDs, plus `q` with `q_id`. The library
+infers `R` and assigns its ID internally.
 
 ```cpp
 #include <array>
@@ -303,35 +420,138 @@ Global-ID call, Tier 2:
 
 #include "spip/algorithms/point_in_polygon_sphere.hpp"
 
-int main() {
-  const std::vector<std::array<double, 3>> poly = {
-      {1.0, 0.0, 0.0},
-      {0.0, 1.0, 0.0},
-      {0.0, 0.0, 1.0},
-  };
-  const std::vector<std::int64_t> vertex_ids = {10, 20, 30};
-  const std::array<double, 3> q = {
-      0.5773502691896257,
-      0.5773502691896257,
-      0.5773502691896257,
-  };
+const std::array<double, 3> q = {0.5773502691896257, 0.5773502691896257,
+                                 0.5773502691896257};
+const std::vector<std::array<double, 3>> poly = {
+    {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+const std::vector<std::int64_t> vertex_ids = {10, 20, 30};
 
-  const spip::pip::Location loc =
-      spip::pip::point_in_polygon_sphere(q, 40, poly, vertex_ids);
-  return static_cast<int>(loc);
-}
+const auto loc = spip::pip::point_in_polygon_sphere(q, 40, poly, vertex_ids);
 ```
+
+#### Tier 3: Local/Internal Robustness
+
+Caller provides polygon vertices and IDs only. The library assigns IDs to `q`
+and `R`; this is deterministic but not globally controlled.
+
+```cpp
+#include <array>
+#include <cstdint>
+#include <vector>
+
+#include "spip/algorithms/point_in_polygon_sphere.hpp"
+
+const std::array<double, 3> q = {0.5773502691896257, 0.5773502691896257,
+                                 0.5773502691896257};
+const std::vector<std::array<double, 3>> poly = {
+    {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+const std::vector<std::int64_t> vertex_ids = {10, 20, 30};
+
+const auto loc = spip::pip::point_in_polygon_sphere(q, poly, vertex_ids);
+```
+
+### 9.5 Global-ID Usage (EFT Pipeline)
+
+The EFT overloads follow the same three-tier structure.
+
+#### Tier 1: Full Global Robustness
+
+```cpp
+#include <cstdint>
+
+#include "spip/algorithms/point_in_polygon_sphere.hpp"
+
+using spip::V3_T;
+
+const V3_T<double> q(0.5773502691896257, 0.5773502691896257, 0.5773502691896257);
+const V3_T<double> R(-0.5773502691896257, -0.5773502691896257, -0.5773502691896257);
+const V3_T<double> poly[3] = {
+    V3_T<double>(1.0, 0.0, 0.0),
+    V3_T<double>(0.0, 1.0, 0.0),
+    V3_T<double>(0.0, 0.0, 1.0),
+};
+const std::int64_t vertex_ids[3] = {10, 20, 30};
+
+const auto loc =
+    spip::pip::point_in_polygon_sphere(q, 40, R, 50, poly, vertex_ids, 3);
+```
+
+#### Tier 2: Semi-Specified Robustness
+
+```cpp
+#include <cstdint>
+#include <vector>
+
+#include "spip/algorithms/point_in_polygon_sphere.hpp"
+
+using spip::V3_T;
+
+const V3_T<double> q(0.5773502691896257, 0.5773502691896257, 0.5773502691896257);
+const std::vector<V3_T<double>> poly = {
+    V3_T<double>(1.0, 0.0, 0.0),
+    V3_T<double>(0.0, 1.0, 0.0),
+    V3_T<double>(0.0, 0.0, 1.0),
+};
+const std::vector<std::int64_t> vertex_ids = {10, 20, 30};
+
+const auto loc = spip::pip::point_in_polygon_sphere(q, 40, poly, vertex_ids);
+```
+
+The library infers `R` and assigns its ID internally.
+
+#### Tier 3: Local/Internal Robustness
+
+```cpp
+#include <array>
+#include <cstdint>
+
+#include "spip/algorithms/point_in_polygon_sphere.hpp"
+
+using spip::V3_T;
+
+const V3_T<double> q(0.5773502691896257, 0.5773502691896257, 0.5773502691896257);
+const std::array<V3_T<double>, 3> poly = {
+    V3_T<double>(1.0, 0.0, 0.0),
+    V3_T<double>(0.0, 1.0, 0.0),
+    V3_T<double>(0.0, 0.0, 1.0),
+};
+const std::array<std::int64_t, 3> vertex_ids = {10, 20, 30};
+
+const auto loc = spip::pip::point_in_polygon_sphere(q, poly, vertex_ids);
+```
+
+The library assigns IDs to `q` and `R`; this is deterministic but not globally
+controlled.
+
+### 9.6 Important Notes
+
+- global IDs must be unique
+- IDs must be non-negative integers
+- vertex IDs are never modified
+- `q` and `R` IDs may be internally assigned
+- for full robustness, use Tier 1
+- `s_AB_R == 0` triggers an error for an invalid face/ray configuration
+
+### 9.7 Link to Tests
+
+See [tests/test_pip_complicated.cpp](/global/u1/h/hyvchen/spherical-pip/tests/test_pip_complicated.cpp)
+for a more involved case, and
+[tests/test_pip_complicated_visualization.nb](/global/u1/h/hyvchen/spherical-pip/tests/test_pip_complicated_visualization.nb)
+for the corresponding visualization notebook.
 
 
 ## 10. Tests and Visualization
 
-Tests live in [tests/](/global/u1/h/hyvchen/spherical-pip/tests).
+Tests live in [tests/](/global/u1/h/hyvchen/spherical-pip/tests) and in the
+repository test directory on GitHub:
+
+- https://github.com/hongyuchen1030/Spherical-Point-In-Polygon/tree/main/tests
 
 Notable coverage includes:
 
-- basic spherical PIP cases
+- robust pipeline unit tests
+- EFT pipeline unit tests
 - robustness tiers with global IDs
-- EFT path compilation and runtime behavior
 - a more complicated polygon/query configuration
 
 The Mathematica notebook
@@ -347,55 +567,91 @@ That notebook is the visualization companion for the complicated PIP test case.
 
 ## 11. References and Acknowledgements
 
-The implementation in this repository is discussed in more detail in the
-associated paper:
+### 11.1 Associated Paper
 
-- https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/
+The algorithms implemented in this repository are discussed in detail in:
 
-This repository contains the implementation. Users who need the full algorithmic
-context should consult the paper.
+- Chen, H. (2026). Accurate and Robust Algorithms for Spherical Polygon
+  Operations. EGUsphere preprint.
+  https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/
 
-This repository uses Jonathan Shewchuk’s robust geometric predicates:
+This repository contains the implementation. The paper provides the full
+algorithmic context and derivations.
 
-- Jonathan Richard Shewchuk,
-  "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates",
-  1997
-- the vendored `predicates.c` is in the public domain
+### 11.2 Robust Geometric Predicates (Shewchuk)
+
+The robust pipeline uses Jonathan Shewchuk's adaptive predicates for core
+orientation-sign evaluation, including the vendored `predicates.c`
+implementation.
+
+- Shewchuk, J. R. (1997). Adaptive Precision Floating-Point Arithmetic and Fast
+  Robust Geometric Predicates. Discrete & Computational Geometry, 18(3),
+  305-363.
+
+Notes:
+
+- the vendored `predicates.c` is public domain
 - see [third_party/LICENSE_shewchuk.txt](/global/u1/h/hyvchen/spherical-pip/third_party/LICENSE_shewchuk.txt)
 
-This repository also uses Geogram multiprecision components:
+### 11.3 Simulation of Simplicity (SoS)
 
-- Geogram PSM exact arithmetic
-- Geogram PCK-related support included in the vendored code layout used by this project
+Simulation of Simplicity is used for global-ID degeneracy resolution in the
+Tier 1, Tier 2, and Tier 3 global-ID paths.
 
-The project depends on Eigen for fixed-size vector and packet-related types used in the C++ implementation.
+- Edelsbrunner, H., & Mucke, E. P. (1990). Simulation of Simplicity: A
+  Technique to Cope with Degenerate Cases in Geometric Algorithms. ACM
+  Transactions on Graphics, 9(1), 66-104.
+  https://doi.org/10.1145/77635.77639
 
-Simulation of Simplicity is from:
+### 11.4 Half-Open Rule
 
-- Herbert Edelsbrunner and Ernst P. Mücke,
-  "Simulation of Simplicity: A Technique to Cope with Degenerate Cases in
-  Geometric Algorithms",
-  ACM Transactions on Graphics, 1990
-- https://dl.acm.org/doi/abs/10.1145/77635.77639
+The non-global-ID branch uses a deterministic half-open convention for
+ray-vertex tie-breaking.
 
-The half-open rule discussion refers to:
-
-- Kai Hormann, Alexander Agathos,
-  "The point in polygon problem for arbitrary polygons",
-  Computational Geometry,
-  Volume 20, Issue 3,
-  2001,
-  Pages 131-144,
-  ISSN 0925-7721,
+- Hormann, K., & Agathos, A. (2001). The Point in Polygon Problem for
+  Arbitrary Polygons. Computational Geometry, 20(3), 131-144.
   https://doi.org/10.1016/S0925-7721(01)00012-8
 
 Important note:
 
-- Hormann and Agathos discuss the half-open rule in the planar setting
-- this repository works on the spherical surface
-- this repository does not currently claim a global theoretical proof for the
-  spherical no-global-ID tie-breaking rule
-- in this repository, the half-open rule is used as a deterministic tie-breaking
-  convention when no global ID is present and a degenerate ray/vertex case
-  occurs
-- if full global robustness is required, users should use Tier 1 global-ID mode
+- the original work is planar
+- this repository applies the rule on the sphere
+- no global theoretical proof is claimed here for the spherical case
+- the rule is used as deterministic tie-breaking in non-global-ID mode
+- for full robustness, users should use Tier 1 global-ID mode
+
+### 11.5 Geogram Multiprecision
+
+Geogram multiprecision components are used as the exact fallback for predicate
+evaluation in the robust pipeline.
+
+- Geogram PSM exact arithmetic
+- Geogram PCK-related components included in the vendored code layout used by
+  this project
+
+### 11.6 Error-Free Transformations (EFT)
+
+The EFT pipeline is informed by the compensated-arithmetic literature used for
+accurate determinant and sign evaluation.
+
+- Ogita, T., Rump, S. M., & Oishi, S. (2005). Accurate Sum and Dot Product.
+  SIAM Journal on Scientific Computing, 26(6), 1955-1988.
+  https://doi.org/10.1137/030601818
+- Additional reference: https://arxiv.org/abs/2510.09892
+- Based on: Kahan, W. (1996). Lecture Notes on the Status of IEEE 754.
+  http://www.cs.berkeley.edu/~wkahan/ieee754status/IEEE754.PDF
+
+### 11.7 Linear Algebra Backend
+
+The project depends on the Eigen library for fixed-size vectors and the
+templated EFT implementation.
+
+- Eigen library
+
+### 11.8 Summary Mapping
+
+- robust pipeline -> Shewchuk + Geogram
+- SoS -> Edelsbrunner & Mucke
+- non-global-ID -> Hormann & Agathos (adapted)
+- EFT -> Ogita-Rump-Oishi + Kahan
+- spherical algorithm -> Chen (2026)
