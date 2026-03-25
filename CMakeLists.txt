@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(spip LANGUAGES C CXX)
+project(Spherical_Point_In_Polygon LANGUAGES C CXX)
 
 option(SPIP_PREDICATES_USE_FLOAT "Use float version of Shewchuk predicates" OFF)
 option(SPIP_BUILD_TESTS "Build spip tests" ON)
