@@ -1,28 +1,52 @@
 version = 1
-SPDX-PackageName = "Spherical-Point-In-Polygon"
+SPDX-PackageName = "AccuSphGeom"
 SPDX-PackageSupplier = "Hongyu Chen <hyvchen@ucdavis.edu>"
-SPDX-PackageDownloadLocation = "https://github.com/hongyuchen1030/Spherical-Point-In-Polygon"
+SPDX-PackageDownloadLocation = "https://github.com/hongyuchen1030/AccuSphGeom"
 
 [[annotations]]
-path = ["src/**", "include/**", "tests/**", "CMakeLists.txt", "quick_build.sh", "README.md", "third_party/predicates.h", "third_party/quadruple3d.h", ".github/copilot-instructions.md"]
+path = [
+  "src/**",
+  "include/**",
+  "tests/**",
+  "CMakeLists.txt",
+  "quick_build.sh",
+  "README.md",
+  ".github/copilot-instructions.md"
+]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Hongyu Chen <hyvchen@ucdavis.edu>"
 SPDX-License-Identifier = "BSD-3-Clause"
 
 [[annotations]]
-path = ["third_party/geogram_psm/MultiPrecision_psm.cpp", "third_party/geogram_psm/MultiPrecision_psm.h"]
+path = [
+  "third_party/geogram_psm/MultiPrecision_psm.cpp",
+  "third_party/geogram_psm/MultiPrecision_psm.h",
+  "third_party/quadruple3d.h"
+]
 precedence = "aggregate"
-SPDX-FileCopyrightText = "2000-2022 Inria <>"
-SPDX-License-Identifier = "LicenseRef-BSD-3-Clause-Inria"
+SPDX-FileCopyrightText = "2000-2022 Inria"
+SPDX-License-Identifier = "BSD-3-Clause"
 
 [[annotations]]
-path = [".gitignore", "third_party/geogram_psm/MultiPrecision_psm.c"]
+path = [
+  "third_party/predicates.c",
+  "third_party/predicates.h"
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "1996 Jonathan Richard Shewchuk"
+SPDX-License-Identifier = "LicenseRef-Shewchuk-Public-Domain"
+
+[[annotations]]
+path = [
+  "third_party/eigen/**"
+]
+precedence = "aggregate"
+SPDX-License-Identifier = "MPL-2.0"
+
+[[annotations]]
+path = [
+  ".gitignore"
+]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "NONE"
-SPDX-License-Identifier = "CC0-1.0"
-
-[[annotations]]
-path = "third_party/predicates.c"
-precedence = "aggregate"
-SPDX-FileCopyrightText = "1996 Jonathan Richard Shewchuk <jrs@cs.cmu.edu>"
 SPDX-License-Identifier = "CC0-1.0"
