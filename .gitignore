@@ -48,6 +48,7 @@ AGENTS.md
 *.swp
 *.swo
 *~
+.codex
 
 # =========================================
 # CLion build folders

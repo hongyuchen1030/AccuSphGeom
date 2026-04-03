@@ -1,4 +1,4 @@
-// include/spip/predicates/orient3d.hpp
+// include/accusphgeom/predicates/orient3d.hpp
 #pragma once
 
 #include <array>
@@ -12,13 +12,13 @@
 // Your build must add `third_party/` to include dirs.
 #include "predicates.h"
 
-namespace spip::predicates {
+namespace accusphgeom::predicates {
 
 enum class Sign : int8_t { Negative = -1, Zero = 0, Positive = 1 };
 
 namespace internal {
 
-using Real = SPIP_PREDICATES_REAL;
+using Real = ACCUSPHGEOM_PREDICATES_REAL;
 
 inline void ensure_exactinit() {
   static std::once_flag flag;
@@ -33,13 +33,17 @@ inline Sign sign_from_value(Real v) {
 
 inline void require_nonnull(const void* p, const char* name) {
   if (!p) {
-    throw std::invalid_argument(std::string("spip::predicates::orient3d: null pointer for ") + name);
+    throw std::invalid_argument(
+        std::string("accusphgeom::predicates::orient3d: null pointer for ") +
+        name);
   }
 }
 
 inline void require_size3(std::size_t n, const char* name) {
   if (n != 3) {
-    throw std::invalid_argument(std::string("spip::predicates::orient3d: ") + name + " must have size 3");
+    throw std::invalid_argument(
+        std::string("accusphgeom::predicates::orient3d: ") + name +
+        " must have size 3");
   }
 }
 
@@ -49,10 +53,13 @@ inline constexpr bool supported_scalar_v =
 
 template <class T>
 inline void require_supported_and_matches_real() {
-  static_assert(supported_scalar_v<T>, "spip::predicates::orient3d: only float/double are supported");
+  static_assert(
+      supported_scalar_v<T>,
+      "accusphgeom::predicates::orient3d: only float/double are supported");
   static_assert(std::is_same_v<T, Real>,
-                "spip::predicates::orient3d: scalar type must match SPIP_PREDICATES_REAL "
-                "(define/un-define SPIP_PREDICATES_USE_FLOAT consistently)");
+                "accusphgeom::predicates::orient3d: scalar type must match "
+                "ACCUSPHGEOM_PREDICATES_REAL (define/un-define "
+                "ACCUSPHGEOM_PREDICATES_USE_FLOAT consistently)");
 }
 
 inline Sign orient3d_raw_ptr(const Real* a,
@@ -151,4 +158,4 @@ inline Sign orient3d_on_sphere(const std::vector<T>& a,
   return internal::orient3d_on_sphere_raw_ptr(a.data(), b.data(), q.data());
 }
 
-}  // namespace spip::predicates
+}  // namespace accusphgeom::predicates

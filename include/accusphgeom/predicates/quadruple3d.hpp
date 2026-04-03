@@ -7,24 +7,25 @@
 #include <vector>
 
 // Reuse the shared Sign enum and common internal helpers.
-#include "spip/predicates/orient3d.hpp"
+#include "accusphgeom/predicates/orient3d.hpp"
 
-// Shewchuk wrapper header used by orient3d.hpp for SPIP_PREDICATES_REAL +
+// Shewchuk wrapper header used by orient3d.hpp for
+// ACCUSPHGEOM_PREDICATES_REAL +
 // exactinit().
 #include "predicates.h"
 
 // Config: defines FPG_UNCERTAIN_VALUE and pulls in fabs().
-#include "spip/predicates/pck_filter_config.hpp"
+#include "accusphgeom/predicates/detail/pck_filter_config.hpp"
 
 // Vendored PCK filter. Your build already exposes third_party/ as an include
 // dir.
 #include "quadruple3d.h"
 
-namespace spip::predicates {
+namespace accusphgeom::predicates {
 
 namespace internal {
 
-using Real = SPIP_PREDICATES_REAL;
+using Real = ACCUSPHGEOM_PREDICATES_REAL;
 
 // Exact fallback implemented in src/predicates/quadruple3d_exact.cpp.
 Sign quadruple3d_exact_fallback(const double* a, const double* b,
@@ -48,10 +49,10 @@ inline Sign quadruple3d_raw_ptr(const Real* a,
   // Keep the same initialization pattern as orient3d.hpp.
   ensure_exactinit();
 
-#ifdef SPIP_PREDICATES_USE_FLOAT
+#ifdef ACCUSPHGEOM_PREDICATES_USE_FLOAT
   static_assert(!std::is_same_v<Real, float>,
-                "spip::predicates::quadruple3d: float mode not supported yet "
-                "(PCK filter is double).");
+                "accusphgeom::predicates::quadruple3d: float mode not "
+                "supported yet (PCK filter is double).");
 #endif
 
   const int s = quadruple_3d_filter(
@@ -104,4 +105,4 @@ inline Sign quadruple3d(const std::vector<T>& a,
   return internal::quadruple3d_raw_ptr(a.data(), b.data(), c.data(), d.data());
 }
 
-}  // namespace spip::predicates
+}  // namespace accusphgeom::predicates

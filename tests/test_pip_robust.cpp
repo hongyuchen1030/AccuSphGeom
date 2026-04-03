@@ -6,12 +6,12 @@
 #include <vector>
 #include <array>
 
-#include "spip/algorithms/point_in_polygon_sphere.hpp"
+#include "accusphgeom/algorithms/point_in_polygon_sphere.hpp"
 
 namespace {
 
-using spip::pip::Location;
-using spip::pip::point_in_polygon_sphere;
+using accusphgeom::algorithms::Location;
+using accusphgeom::algorithms::point_in_polygon_sphere;
 
 std::array<double, 3> normalize(double x, double y, double z) {
   const double n = std::sqrt(x * x + y * y + z * z);

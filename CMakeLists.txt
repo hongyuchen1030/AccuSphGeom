@@ -1,24 +1,24 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(Spherical_Point_In_Polygon LANGUAGES C CXX)
+project(AccuSphGeom LANGUAGES C CXX)
 
-option(SPIP_PREDICATES_USE_FLOAT "Use float version of Shewchuk predicates" OFF)
-option(SPIP_BUILD_TESTS "Build spip tests" ON)
+option(ACCUSPHGEOM_PREDICATES_USE_FLOAT
+       "Use float version of Shewchuk predicates"
+       OFF)
+option(ACCUSPHGEOM_BUILD_TESTS "Build AccuSphGeom tests" ON)
 
-find_package(Eigen3 REQUIRED)
-
-add_library(spip STATIC
+add_library(AccuSphGeom STATIC
   third_party/predicates.c
   third_party/geogram_psm/MultiPrecision_psm.cpp
   src/algorithms/point_in_polygon_sphere.cpp
   src/predicates/quadruple3d_exact.cpp
 )
 
-target_compile_features(spip PUBLIC cxx_std_17)
+target_compile_features(AccuSphGeom PUBLIC cxx_std_17)
 
 # Public headers live in include/, and orient3d.hpp includes "predicates.h",
 # so we expose third_party/ as an include dir for consumers too.
-target_include_directories(spip
+target_include_directories(AccuSphGeom
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
@@ -26,61 +26,55 @@ target_include_directories(spip
     $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(spip
-  PUBLIC
-    Eigen3::Eigen
-)
-
-if(SPIP_PREDICATES_USE_FLOAT)
-  target_compile_definitions(spip PUBLIC SPIP_PREDICATES_USE_FLOAT)
+if(ACCUSPHGEOM_PREDICATES_USE_FLOAT)
+  target_compile_definitions(AccuSphGeom PUBLIC ACCUSPHGEOM_PREDICATES_USE_FLOAT)
 endif()
 
 # Reasonable warnings and strict floating-point semantics.
 if(MSVC)
-  target_compile_options(spip PRIVATE /W4)
+  target_compile_options(AccuSphGeom PRIVATE /W4)
 else()
-  target_compile_options(spip
+  target_compile_options(AccuSphGeom
     PRIVATE
       -Wall
       -Wextra
       -Wpedantic
       -O3
-      -march=native
       -ffp-contract=off
       -fno-fast-math
   )
 endif()
 
-if(SPIP_BUILD_TESTS)
+if(ACCUSPHGEOM_BUILD_TESTS)
   enable_testing()
 
-  add_executable(spip_test_library_usage
+  add_executable(test_library_usage
     tests/test_library_usage.cpp
   )
-  target_link_libraries(spip_test_library_usage PRIVATE spip)
-  add_test(NAME spip_test_library_usage COMMAND spip_test_library_usage)
+  target_link_libraries(test_library_usage PRIVATE AccuSphGeom)
+  add_test(NAME test_library_usage COMMAND test_library_usage)
 
-  add_executable(spip_test_psm_compile
+  add_executable(test_psm_compile
     tests/test_psm_compile.cpp
   )
-  target_link_libraries(spip_test_psm_compile PRIVATE spip)
-  add_test(NAME spip_test_psm_compile COMMAND spip_test_psm_compile)
+  target_link_libraries(test_psm_compile PRIVATE AccuSphGeom)
+  add_test(NAME test_psm_compile COMMAND test_psm_compile)
 
-  add_executable(spip_test_quadruple3d
+  add_executable(test_quadruple3d_basic
     tests/test_quadruple3d_basic.cpp
   )
-  target_link_libraries(spip_test_quadruple3d PRIVATE spip)
-  add_test(NAME spip_test_quadruple3d COMMAND spip_test_quadruple3d)
+  target_link_libraries(test_quadruple3d_basic PRIVATE AccuSphGeom)
+  add_test(NAME test_quadruple3d_basic COMMAND test_quadruple3d_basic)
 
-  add_executable(spip_test_pip_robust
+  add_executable(test_pip_robust
     tests/test_pip_robust.cpp
   )
-  target_link_libraries(spip_test_pip_robust PRIVATE spip)
-  add_test(NAME spip_test_pip_robust COMMAND spip_test_pip_robust)
+  target_link_libraries(test_pip_robust PRIVATE AccuSphGeom)
+  add_test(NAME test_pip_robust COMMAND test_pip_robust)
 
-  add_executable(spip_test_pip_complicated
+  add_executable(test_pip_complicated
     tests/test_pip_complicated.cpp
   )
-  target_link_libraries(spip_test_pip_complicated PRIVATE spip)
-  add_test(NAME spip_test_pip_complicated COMMAND spip_test_pip_complicated)
+  target_link_libraries(test_pip_complicated PRIVATE AccuSphGeom)
+  add_test(NAME test_pip_complicated COMMAND test_pip_complicated)
 endif()

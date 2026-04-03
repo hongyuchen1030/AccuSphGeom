@@ -1,4 +1,4 @@
-#include <spip/algorithms/point_in_polygon_sphere.hpp>
+#include <accusphgeom/algorithms/point_in_polygon_sphere.hpp>
 
 #include <array>
 #include <cmath>
@@ -8,9 +8,7 @@
 #include <string>
 #include <vector>
 
-#include <spip/kernels/pip_kernel_adaptive.hpp>
-
-namespace spip::pip {
+namespace accusphgeom::algorithms {
 
 namespace {
 
@@ -65,8 +63,7 @@ inline void validate_poly_and_query_sizes(
   }
 }
 
-using Kernel = spip::kernels::PIPKernelAdaptive;
-using Sign = Kernel::Sign;
+using Sign = accusphgeom::predicates::Sign;
 
 // Require a valid pointer to three coordinates.
 inline void require_nonnull3(const double* p, const char* name) {
@@ -102,10 +99,10 @@ inline bool on_minor_arc(const double* q, const double* A, const double* B) {
   if (equal3(A, B)) {
     return false;
   }
-  if (Kernel::orient3d_on_sphere(A, B, q) != Sign::Zero) {
+  if (accusphgeom::predicates::orient3d_on_sphere(A, B, q) != Sign::Zero) {
     return false;
   }
-  return Kernel::quadruple3d(A, q, q, B) != Sign::Negative;
+  return accusphgeom::predicates::quadruple3d(A, q, q, B) != Sign::Negative;
 }
 
 // Validate the raw-pointer polygon input and test whether q matches a polygon
@@ -209,10 +206,10 @@ inline std::array<double, 3> make_perturbed_antipode(const double* q) {
 // - otherwise use the half-open branch structure
 inline detail::CrossingResult counts_as_ray_crossing(
     const double* A, const double* B, const double* q, const double* R) {
-  const Sign s_qR_A = Kernel::orient3d_on_sphere(q, R, A);
-  const Sign s_qR_B = Kernel::orient3d_on_sphere(q, R, B);
-  const Sign s_AB_q = Kernel::orient3d_on_sphere(A, B, q);
-  const Sign s_AB_R = Kernel::orient3d_on_sphere(A, B, R);
+  const Sign s_qR_A = accusphgeom::predicates::orient3d_on_sphere(q, R, A);
+  const Sign s_qR_B = accusphgeom::predicates::orient3d_on_sphere(q, R, B);
+  const Sign s_AB_q = accusphgeom::predicates::orient3d_on_sphere(A, B, q);
+  const Sign s_AB_R = accusphgeom::predicates::orient3d_on_sphere(A, B, R);
 
   if (s_AB_q == Sign::Zero) {
     return detail::CrossingResult::NoCrossing;
@@ -261,23 +258,23 @@ inline detail::CrossingResult counts_as_ray_crossing_sos(
     const double* B, std::int64_t rankB,
     const double* q, std::int64_t rankQ,
     const double* R, std::int64_t rankR) {
-  const Sign s_AB_q = Kernel::orient3d_on_sphere(A, B, q);
+  const Sign s_AB_q = accusphgeom::predicates::orient3d_on_sphere(A, B, q);
   if (s_AB_q == Sign::Zero) {
     return detail::CrossingResult::NoCrossing;
   }
 
-  const Sign s_AB_R = Kernel::orient3d_on_sphere(A, B, R);
+  const Sign s_AB_R = accusphgeom::predicates::orient3d_on_sphere(A, B, R);
   if (s_AB_R == Sign::Zero) {
     throw_ray_endpoint_degeneracy();
   }
 
-  Sign s_qR_A = Kernel::orient3d_on_sphere(q, R, A);
+  Sign s_qR_A = accusphgeom::predicates::orient3d_on_sphere(q, R, A);
   if (s_qR_A == Sign::Zero) {
     s_qR_A = detail::orient3d_on_sphere_sos_from_doubles(
         q, rankQ, R, rankR, A, rankA);
   }
 
-  Sign s_qR_B = Kernel::orient3d_on_sphere(q, R, B);
+  Sign s_qR_B = accusphgeom::predicates::orient3d_on_sphere(q, R, B);
   if (s_qR_B == Sign::Zero) {
     s_qR_B = detail::orient3d_on_sphere_sos_from_doubles(
         q, rankQ, R, rankR, B, rankB);
@@ -521,4 +518,4 @@ Location point_in_polygon_sphere(
                                  ptrs.size());
 }
 
-}  // namespace spip::pip
+}  // namespace accusphgeom::algorithms
