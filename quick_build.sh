@@ -16,6 +16,7 @@ fi
 
 cmake -G "${GENERATOR}" \
   -DCMAKE_BUILD_TYPE=Release \
+  -DSPIP_PREDICATES_USE_FLOAT=OFF \
   "${ROOT_DIR}"
 
 cmake --build . -j
