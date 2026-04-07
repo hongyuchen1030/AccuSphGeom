@@ -1,14 +1,14 @@
-#include <spip/algorithms/point_in_polygon_sphere.hpp>
+#include <accusphgeom/algorithms/point_in_polygon_sphere.hpp>
 
 #include <array>
 #include <cstdlib>
 #include <cstdint>
 #include <iostream>
+#include <type_traits>
 #include <vector>
 
-using spip::V3_T;
-using spip::pip::Location;
-using spip::pip::point_in_polygon_sphere;
+using accusphgeom::algorithms::Location;
+using accusphgeom::algorithms::point_in_polygon_sphere;
 
 namespace {
 
@@ -29,6 +29,23 @@ void expect_equal(Location got, Location expected, const char* test_name) {
     std::exit(EXIT_FAILURE);
   }
   std::cout << "[PASS] " << test_name << '\n';
+}
+
+template <typename GlobalId>
+void expect_inside_with_global_id_type(
+    const std::array<double, 3>& q,
+    const std::array<std::array<double, 3>, 3>& poly,
+    const char* test_name) {
+  static_assert(std::is_integral_v<GlobalId>,
+                "GlobalId must be an integral type");
+  const std::array<GlobalId, 3> vertex_ids = {
+      static_cast<GlobalId>(10),
+      static_cast<GlobalId>(20),
+      static_cast<GlobalId>(30),
+  };
+  expect_equal(point_in_polygon_sphere(q, poly, vertex_ids),
+               Location::Inside,
+               test_name);
 }
 
 }  // namespace
@@ -70,26 +87,6 @@ int main() {
   const double* poly_raw[3] = {
       poly_storage[0], poly_storage[1], poly_storage[2]};
   const std::int64_t vertex_ids_raw[3] = {10, 20, 30};
-
-  const V3_T<double> q_eft(
-      0.5773502691896257, 0.5773502691896257, 0.5773502691896257);
-  const V3_T<double> r_eft(
-      -0.5773502691896257, -0.5773502691896257, -0.5773502691896257);
-  const std::array<V3_T<double>, 3> poly_eft_array = {
-      V3_T<double>(1.0, 0.0, 0.0),
-      V3_T<double>(0.0, 1.0, 0.0),
-      V3_T<double>(0.0, 0.0, 1.0),
-  };
-  const std::vector<V3_T<double>> poly_eft_vec = {
-      V3_T<double>(1.0, 0.0, 0.0),
-      V3_T<double>(0.0, 1.0, 0.0),
-      V3_T<double>(0.0, 0.0, 1.0),
-  };
-  const V3_T<double> poly_eft_raw[3] = {
-      V3_T<double>(1.0, 0.0, 0.0),
-      V3_T<double>(0.0, 1.0, 0.0),
-      V3_T<double>(0.0, 0.0, 1.0),
-  };
 
   // robust / no-global-ID / raw pointer overload
   expect_equal(point_in_polygon_sphere(q_raw, poly_raw, 3),
@@ -154,68 +151,29 @@ int main() {
                Location::Inside,
                "robust / Tier 3 / std::vector overload");
 
-  // EFT / no-global-ID / raw pointer overload
-  expect_equal(point_in_polygon_sphere(q_eft, poly_eft_raw, 3),
-               Location::Inside,
-               "EFT / no-global-ID / raw pointer overload");
+  // robust / Tier 3 / std::array overload / short global IDs
+  expect_inside_with_global_id_type<short>(
+      q_array,
+      poly_array,
+      "robust / Tier 3 / std::array overload / short global IDs");
 
-  // EFT / no-global-ID / std::array overload
-  expect_equal(point_in_polygon_sphere(q_eft, poly_eft_array),
-               Location::Inside,
-               "EFT / no-global-ID / std::array overload");
+  // robust / Tier 3 / std::array overload / int global IDs
+  expect_inside_with_global_id_type<int>(
+      q_array,
+      poly_array,
+      "robust / Tier 3 / std::array overload / int global IDs");
 
-  // EFT / no-global-ID / std::vector overload
-  expect_equal(point_in_polygon_sphere(q_eft, poly_eft_vec),
-               Location::Inside,
-               "EFT / no-global-ID / std::vector overload");
+  // robust / Tier 3 / std::array overload / long global IDs
+  expect_inside_with_global_id_type<long>(
+      q_array,
+      poly_array,
+      "robust / Tier 3 / std::array overload / long global IDs");
 
-  // EFT / Tier 1 / raw pointer overload
-  expect_equal(point_in_polygon_sphere(
-                   q_eft, q_id, r_eft, r_id, poly_eft_raw, vertex_ids_raw, 3),
-               Location::Inside,
-               "EFT / Tier 1 / raw pointer overload");
-
-  // EFT / Tier 1 / std::array overload
-  expect_equal(point_in_polygon_sphere(
-                   q_eft, q_id, r_eft, r_id, poly_eft_array, vertex_ids_array),
-               Location::Inside,
-               "EFT / Tier 1 / std::array overload");
-
-  // EFT / Tier 1 / std::vector overload
-  expect_equal(point_in_polygon_sphere(
-                   q_eft, q_id, r_eft, r_id, poly_eft_vec, vertex_ids_vec),
-               Location::Inside,
-               "EFT / Tier 1 / std::vector overload");
-
-  // EFT / Tier 2 / raw pointer overload
-  expect_equal(point_in_polygon_sphere(q_eft, q_id, poly_eft_raw, vertex_ids_raw, 3),
-               Location::Inside,
-               "EFT / Tier 2 / raw pointer overload");
-
-  // EFT / Tier 2 / std::array overload
-  expect_equal(point_in_polygon_sphere(q_eft, q_id, poly_eft_array, vertex_ids_array),
-               Location::Inside,
-               "EFT / Tier 2 / std::array overload");
-
-  // EFT / Tier 2 / std::vector overload
-  expect_equal(point_in_polygon_sphere(q_eft, q_id, poly_eft_vec, vertex_ids_vec),
-               Location::Inside,
-               "EFT / Tier 2 / std::vector overload");
-
-  // EFT / Tier 3 / raw pointer overload
-  expect_equal(point_in_polygon_sphere(q_eft, poly_eft_raw, vertex_ids_raw, 3),
-               Location::Inside,
-               "EFT / Tier 3 / raw pointer overload");
-
-  // EFT / Tier 3 / std::array overload
-  expect_equal(point_in_polygon_sphere(q_eft, poly_eft_array, vertex_ids_array),
-               Location::Inside,
-               "EFT / Tier 3 / std::array overload");
-
-  // EFT / Tier 3 / std::vector overload
-  expect_equal(point_in_polygon_sphere(q_eft, poly_eft_vec, vertex_ids_vec),
-               Location::Inside,
-               "EFT / Tier 3 / std::vector overload");
+  // robust / Tier 3 / std::array overload / long long global IDs
+  expect_inside_with_global_id_type<long long>(
+      q_array,
+      poly_array,
+      "robust / Tier 3 / std::array overload / long long global IDs");
 
   std::cout << "OK\n";
   return 0;

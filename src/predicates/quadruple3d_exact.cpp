@@ -1,9 +1,9 @@
-#include "spip/predicates/quadruple3d.hpp"
+#include "accusphgeom/predicates/quadruple3d.hpp"
 
 // Geogram PSM exact arithmetic
 #include "MultiPrecision_psm.h"
 
-namespace spip::predicates::internal {
+namespace accusphgeom::predicates::internal {
 
 static inline Sign sign_from_geo(GEO::Sign s) {
   switch (s) {
@@ -32,4 +32,4 @@ Sign quadruple3d_exact_fallback(const double* a, const double* b,
   return sign_from_geo(Delta.sign());
 }
 
-}  // namespace spip::predicates::internal
+}  // namespace accusphgeom::predicates::internal

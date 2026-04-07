@@ -4,9 +4,9 @@
 #include <cstdint>
 #include <iostream>
 
-#include "spip/predicates/quadruple3d.hpp"
+#include "accusphgeom/predicates/quadruple3d.hpp"
 
-using spip::predicates::Sign;
+using accusphgeom::predicates::Sign;
 
 static const char* to_cstr(Sign s) {
   switch(s) {
@@ -30,7 +30,7 @@ int main() {
   std::array<double,3> e2{0,1,0};
 
   {
-    Sign s = spip::predicates::quadruple3d(e1, e2, e1, e2);
+    Sign s = accusphgeom::predicates::quadruple3d(e1, e2, e1, e2);
     if(s != Sign::Positive) {
       std::cerr << "Test1 failed: expected Positive, got " << to_cstr(s) << "\n";
       return 1;
@@ -40,7 +40,7 @@ int main() {
   // --- Test 2: sign flip by swapping c and d ---
   // (a×b)·(d×c) = (e3)·(-e3) = -1
   {
-    Sign s = spip::predicates::quadruple3d(e1, e2, e2, e1);
+    Sign s = accusphgeom::predicates::quadruple3d(e1, e2, e2, e1);
     if(s != Sign::Negative) {
       std::cerr << "Test2 failed: expected Negative, got " << to_cstr(s) << "\n";
       return 1;
@@ -73,7 +73,7 @@ int main() {
     std::array<double,3> d{t,1,0};
 
     int f = filter_only(a.data(), b.data(), c.data(), d.data());
-    Sign s = spip::predicates::quadruple3d(a,b,c,d);
+    Sign s = accusphgeom::predicates::quadruple3d(a,b,c,d);
 
     // True sign is Positive (Delta = 1 - t^2 > 0)
     if(s != Sign::Positive) {
