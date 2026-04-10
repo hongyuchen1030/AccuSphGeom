@@ -38,14 +38,14 @@ The robust pipeline uses Jonathan Shewchuk's adaptive predicates for core
 orientation-sign evaluation, including the vendored `predicates.c`, which is in public domain
 
 
-### 8.3 Simulation of Simplicity (SoS)
+### Simulation of Simplicity (SoS)
 
 Simulation of Simplicity is used for global-ID degeneracy resolution in the
 Tier 1, Tier 2, and Tier 3 global-ID paths.
   Transactions on Graphics, 9(1), 66-104.
   https://doi.org/10.1145/77635.77639
 
-### 8.4 Half-Open Rule
+### Half-Open Rule
 
 The non-global-ID branch uses a deterministic half-open convention for
 ray-vertex tie-breaking.
@@ -53,7 +53,7 @@ ray-vertex tie-breaking.
 - the rule is used as deterministic tie-breaking in non-global-ID mode
 - for full robustness, users should use Tier 1 global-ID mode
 
-### 8.5 Geogram Multiprecision
+### Geogram Multiprecision
 
 Geogram multiprecision components are used as the exact fallback for predicate
 evaluation in the robust pipeline.
