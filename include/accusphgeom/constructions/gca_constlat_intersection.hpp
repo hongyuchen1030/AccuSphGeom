@@ -12,8 +12,13 @@ template <typename T>
 struct GcaConstLatIntersections {
   numeric::Vec3<T> point_pos{};
   numeric::Vec3<T> point_neg{};
-  numeric::Vec3<T> normal_high{};
-  numeric::Vec3<T> normal_low{};
+};
+
+
+template <typename T>
+struct GcaConstLatTryResult {
+  numeric::Vec3<T> point{};
+  int status{}; // 0 = ok, 1 = both valid, 2 = none valid
 };
 
 template <typename T>
@@ -37,10 +42,6 @@ inline GcaConstLatIntersections<T> accux_constlat(const numeric::Vec3<T>& a,
   const T nz = normal.hi[2] + normal.lo[2];
   const T planar = s.hi + s.lo;
   const T denom = s2.hi + s2.lo;
-  if (denom == T(0)) {
-    throw std::domain_error(
-        "gca_constlat_intersection: degenerate great-circle normal");
-  }
 
   const auto x_num_pos = numeric::compensated_dot_product(
       std::array<T, 2>{nx * nz, -ny},
@@ -56,8 +57,6 @@ inline GcaConstLatIntersections<T> accux_constlat(const numeric::Vec3<T>& a,
       std::array<T, 2>{z0, planar});
 
   GcaConstLatIntersections<T> out{};
-  out.normal_high = normal.hi;
-  out.normal_low = normal.lo;
   out.point_pos = {-(x_num_pos.hi + x_num_pos.lo) / denom,
                    -(y_num_pos.hi + y_num_pos.lo) / denom, z0};
   out.point_neg = {-(x_num_neg.hi + x_num_neg.lo) / denom,
@@ -66,28 +65,62 @@ inline GcaConstLatIntersections<T> accux_constlat(const numeric::Vec3<T>& a,
 }
 
 template <typename T>
-inline numeric::Vec3<T> gca_constlat_intersection(const numeric::Vec3<T>& a,
-                                                  const numeric::Vec3<T>& b,
-                                                  T z0) {
-  const auto candidates = accux_constlat(a, b, z0);
-  const T arc_tolerance = T(1e-8);
-  const bool pos_on_arc =
-      predicates::on_minor_arc(candidates.point_pos, a, b, arc_tolerance);
-  const bool neg_on_arc =
-      predicates::on_minor_arc(candidates.point_neg, a, b, arc_tolerance);
+inline GcaConstLatTryResult<T>
+try_gca_constlat_intersection(const numeric::Vec3<T>& a,
+                              const numeric::Vec3<T>& b,
+                              T z0) {
+  const auto c = accux_constlat(a, b, z0);
+  const T tol = T(1e-8);
 
-  if (pos_on_arc && !neg_on_arc) {
-    return candidates.point_pos;
+  const bool pos_finite =
+      std::isfinite(c.point_pos[0]) &
+      std::isfinite(c.point_pos[1]);
+
+  const bool neg_finite =
+      std::isfinite(c.point_neg[0]) &
+      std::isfinite(c.point_neg[1]);
+
+  const bool pos_on_arc =
+      pos_finite & predicates::on_minor_arc_tol_ptr(c.point_pos, a, b, tol);
+
+  const bool neg_on_arc =
+      neg_finite & predicates::on_minor_arc_tol_ptr(c.point_neg, a, b, tol);
+
+  const int pos_valid = pos_finite & pos_on_arc;
+  const int neg_valid = neg_finite & neg_on_arc;
+
+  // mask-based selection 
+  const T pos_mask = static_cast<T>(pos_valid & !neg_valid);
+  const T neg_mask = static_cast<T>(neg_valid & !pos_valid);
+
+  numeric::Vec3<T> out{};
+  out[0] = pos_mask * c.point_pos[0] + neg_mask * c.point_neg[0];
+  out[1] = pos_mask * c.point_pos[1] + neg_mask * c.point_neg[1];
+  out[2] = pos_mask * c.point_pos[2] + neg_mask * c.point_neg[2];
+
+  // status (minimal)
+  const int both = pos_valid & neg_valid;
+  const int none = (!pos_valid) & (!neg_valid);
+
+  const int status = both ? 1 : (none ? 2 : 0);
+
+  return {out, status};
+}
+
+template <typename T>
+inline numeric::Vec3<T>
+gca_constlat_intersection(const numeric::Vec3<T>& a,
+                          const numeric::Vec3<T>& b,
+                          T z0) {
+  const auto r = try_gca_constlat_intersection(a, b, z0);
+
+  if (r.status == 0) return r.point;
+
+  if (r.status == 1) {
+    throw std::domain_error("both intersections lie on the minor arc");
   }
-  if (neg_on_arc && !pos_on_arc) {
-    return candidates.point_neg;
-  }
-  if (pos_on_arc && neg_on_arc) {
-    throw std::domain_error(
-        "gca_constlat_intersection: both intersections lie on the minor arc");
-  }
-  throw std::domain_error(
-      "gca_constlat_intersection: no intersection lies on the minor arc");
+
+  throw std::domain_error("no intersection lies on the minor arc");
 }
 
 }  // namespace accusphgeom::constructions
