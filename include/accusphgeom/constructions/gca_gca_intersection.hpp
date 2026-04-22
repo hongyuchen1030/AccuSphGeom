@@ -12,7 +12,7 @@ namespace accusphgeom::constructions {
 namespace internal {
 
 template <typename T>
-inline constexpr T gca_gca_minor_arc_coplanarity_tolerance =
+inline constexpr T gca_gca_minor_arc_tol =
     static_cast<T>(1e-8);
 
 }  // namespace internal
@@ -56,8 +56,8 @@ inline GcaGcaTryResult<T> try_gca_gca_intersection(
     const numeric::Vec3<T>& b0,
     const numeric::Vec3<T>& b1) {
   const auto candidates = accux_gca(a0, a1, b0, b1);
-  constexpr T minor_arc_coplanarity_tolerance =
-      internal::gca_gca_minor_arc_coplanarity_tolerance<T>;
+  constexpr T minor_arc_tolerance =
+      internal::gca_gca_minor_arc_tol<T>;
   const bool pos_finite =
       std::isfinite(candidates.point_pos[0]) &
       std::isfinite(candidates.point_pos[1]) &
@@ -68,16 +68,16 @@ inline GcaGcaTryResult<T> try_gca_gca_intersection(
       std::isfinite(candidates.point_neg[2]);
   const bool pos_on_arc_a =
       predicates::on_minor_arc_tol_ptr(candidates.point_pos, a0, a1,
-                                       minor_arc_coplanarity_tolerance);
+                                       minor_arc_tolerance);
   const bool pos_on_arc_b =
       predicates::on_minor_arc_tol_ptr(candidates.point_pos, b0, b1,
-                                       minor_arc_coplanarity_tolerance);
+                                       minor_arc_tolerance);
   const bool neg_on_arc_a =
       predicates::on_minor_arc_tol_ptr(candidates.point_neg, a0, a1,
-                                       minor_arc_coplanarity_tolerance);
+                                       minor_arc_tolerance);
   const bool neg_on_arc_b =
       predicates::on_minor_arc_tol_ptr(candidates.point_neg, b0, b1,
-                                       minor_arc_coplanarity_tolerance);
+                                       minor_arc_tolerance);
   const int pos_valid = pos_finite & pos_on_arc_a & pos_on_arc_b;
   const int neg_valid = neg_finite & neg_on_arc_a & neg_on_arc_b;
 

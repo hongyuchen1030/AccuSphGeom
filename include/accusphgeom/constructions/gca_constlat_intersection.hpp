@@ -8,6 +8,13 @@
 
 namespace accusphgeom::constructions {
 
+namespace internal {
+
+template <typename T>
+inline constexpr T gca_constlat_minor_arc_tol = static_cast<T>(1e-8);
+
+}  // namespace internal
+
 template <typename T>
 struct GcaConstLatIntersections {
   numeric::Vec3<T> point_pos{};
@@ -70,7 +77,7 @@ try_gca_constlat_intersection(const numeric::Vec3<T>& a,
                               const numeric::Vec3<T>& b,
                               T z0) {
   const auto c = accux_constlat(a, b, z0);
-  const T tol = T(1e-8);
+  constexpr T minor_arc_tolerance = internal::gca_constlat_minor_arc_tol<T>;
 
   const bool pos_finite =
       std::isfinite(c.point_pos[0]) &
@@ -81,10 +88,12 @@ try_gca_constlat_intersection(const numeric::Vec3<T>& a,
       std::isfinite(c.point_neg[1]);
 
   const bool pos_on_arc =
-      pos_finite & predicates::on_minor_arc_tol_ptr(c.point_pos, a, b, tol);
+      pos_finite & predicates::on_minor_arc_tol_ptr(c.point_pos, a, b,
+                                                    minor_arc_tolerance);
 
   const bool neg_on_arc =
-      neg_finite & predicates::on_minor_arc_tol_ptr(c.point_neg, a, b, tol);
+      neg_finite & predicates::on_minor_arc_tol_ptr(c.point_neg, a, b,
+                                                    minor_arc_tolerance);
 
   const int pos_valid = pos_finite & pos_on_arc;
   const int neg_valid = neg_finite & neg_on_arc;
