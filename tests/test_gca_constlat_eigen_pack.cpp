@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <iostream>
 
-#include "accusphgeom/adapters/eigen/gca_constlat_intersection_eigen.hpp"
+#include "accusphgeom/adapters/eigen/numeric.hpp"
 #include "accusphgeom/constructions/gca_constlat_intersection.hpp"
 
 namespace {

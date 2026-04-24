@@ -116,6 +116,15 @@ if(ACCUSPHGEOM_BUILD_TESTS)
   add_test(NAME test_gca_constlat_intersection_baseline COMMAND test_gca_constlat_intersection_baseline)
 
   if(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR)
+    add_executable(test_gca_gca_eigen_pack
+      tests/test_gca_gca_eigen_pack.cpp
+    )
+    target_link_libraries(test_gca_gca_eigen_pack PRIVATE AccuSphGeom)
+    target_include_directories(test_gca_gca_eigen_pack
+      PRIVATE ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
+    )
+    add_test(NAME test_gca_gca_eigen_pack COMMAND test_gca_gca_eigen_pack)
+
     add_executable(test_gca_constlat_eigen_pack
       tests/test_gca_constlat_eigen_pack.cpp
     )

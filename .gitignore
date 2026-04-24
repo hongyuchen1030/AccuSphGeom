@@ -66,3 +66,4 @@ cmake-build-*/
 *.slurm
 *.out.*
 *.err.*
+.codex

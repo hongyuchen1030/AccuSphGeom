@@ -11,9 +11,7 @@ namespace accusphgeom::constructions {
 
 namespace internal {
 
-template <typename T>
-inline constexpr T gca_gca_minor_arc_tol =
-    static_cast<T>(1e-8);
+inline constexpr double gca_gca_minor_arc_tol = 1e-8;
 
 }  // namespace internal
 
@@ -55,37 +53,42 @@ inline auto try_gca_gca_intersection(const numeric::Vec3<T>& a0,
                                      const numeric::Vec3<T>& b0,
                                      const numeric::Vec3<T>& b1) {
   const auto candidates = accux_gca(a0, a1, b0, b1);
-  constexpr T tol = internal::gca_gca_minor_arc_tol<T>;
+  const T tol = T(internal::gca_gca_minor_arc_tol);
+  const T one = T(1);
 
   const auto pos_finite =
-      isfinite_mask(candidates.point_pos[0]) &
-      isfinite_mask(candidates.point_pos[1]) &
-      isfinite_mask(candidates.point_pos[2]);
+      numeric::isfinite_mask(candidates.point_pos[0]) *
+      numeric::isfinite_mask(candidates.point_pos[1]) *
+      numeric::isfinite_mask(candidates.point_pos[2]);
 
   const auto neg_finite =
-      isfinite_mask(candidates.point_neg[0]) &
-      isfinite_mask(candidates.point_neg[1]) &
-      isfinite_mask(candidates.point_neg[2]);
+      numeric::isfinite_mask(candidates.point_neg[0]) *
+      numeric::isfinite_mask(candidates.point_neg[1]) *
+      numeric::isfinite_mask(candidates.point_neg[2]);
 
   const auto pos_on_arc_a =
-      pos_finite &
-      predicates::on_minor_arc_tol_ptr(candidates.point_pos, a0, a1, tol);
+      pos_finite *
+      predicates::internal::on_minor_arc_tol_ptr(candidates.point_pos.data(),
+                                                 a0.data(), a1.data(), tol);
   const auto pos_on_arc_b =
-      pos_finite &
-      predicates::on_minor_arc_tol_ptr(candidates.point_pos, b0, b1, tol);
+      pos_finite *
+      predicates::internal::on_minor_arc_tol_ptr(candidates.point_pos.data(),
+                                                 b0.data(), b1.data(), tol);
 
   const auto neg_on_arc_a =
-      neg_finite &
-      predicates::on_minor_arc_tol_ptr(candidates.point_neg, a0, a1, tol);
+      neg_finite *
+      predicates::internal::on_minor_arc_tol_ptr(candidates.point_neg.data(),
+                                                 a0.data(), a1.data(), tol);
   const auto neg_on_arc_b =
-      neg_finite &
-      predicates::on_minor_arc_tol_ptr(candidates.point_neg, b0, b1, tol);
+      neg_finite *
+      predicates::internal::on_minor_arc_tol_ptr(candidates.point_neg.data(),
+                                                 b0.data(), b1.data(), tol);
 
-  const auto pos_valid = pos_finite & pos_on_arc_a & pos_on_arc_b;
-  const auto neg_valid = neg_finite & neg_on_arc_a & neg_on_arc_b;
+  const auto pos_valid = pos_finite * pos_on_arc_a * pos_on_arc_b;
+  const auto neg_valid = neg_finite * neg_on_arc_a * neg_on_arc_b;
 
-  const auto pos_mask = pos_valid & ~neg_valid;
-  const auto neg_mask = neg_valid & ~pos_valid;
+  const auto pos_mask = pos_valid * (one - neg_valid);
+  const auto neg_mask = neg_valid * (one - pos_valid);
 
   numeric::Vec3<T> out{};
   out[0] = pos_mask * candidates.point_pos[0] +
@@ -95,9 +98,9 @@ inline auto try_gca_gca_intersection(const numeric::Vec3<T>& a0,
   out[2] = pos_mask * candidates.point_pos[2] +
            neg_mask * candidates.point_neg[2];
 
-  const auto both = pos_valid & neg_valid;
-  const auto none = (~pos_valid) & (~neg_valid);
-  const auto status = both + (none + none);
+  const auto both = pos_valid * neg_valid;
+  const auto none = (one - pos_valid) * (one - neg_valid);
+  const auto status = both + none * T(2);
 
   using StatusT = decltype(status);
   return GcaGcaTryResult<T, StatusT>{out, status};
