@@ -1,7 +1,7 @@
 # =========================================
 # Build directories
 # =========================================
-build/
+/build*/
 cmake-build-*/
 out/
 dist/
@@ -48,7 +48,7 @@ AGENTS.md
 *.swp
 *.swo
 *~
-.codex
+/.codex/
 
 # =========================================
 # CLion build folders

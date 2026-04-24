@@ -7,6 +7,24 @@ option(ACCUSPHGEOM_PREDICATES_USE_FLOAT
        OFF)
 option(ACCUSPHGEOM_BUILD_TESTS "Build AccuSphGeom tests" ON)
 
+find_path(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR Eigen/Dense
+  PATHS
+    /usr/include/eigen3
+    /usr/local/include/eigen3
+)
+
+add_library(simd_fma INTERFACE)
+# Compilation options for FMA instructions
+target_compile_options(simd_fma INTERFACE -march=native -ffp-contract=off)
+# A note on -ffp-contract:
+#   The default on GCC (at least with -std=gnu17 instead of -std=c++17) is
+#   -fp-contract=fast, which can contract floating point multiplications and
+#   additions spanning across **multiple statements** into FMA instructions.
+#   This can be surprising and change the roundoff behavior. This is especially
+#   unsafe for EFT algorithms, which rely fundamentally on the IEEE 754
+#   roundoff behavior implied by the sequence of statements as literally
+#   written in the source file.
+
 add_library(AccuSphGeom STATIC
   third_party/predicates.c
   third_party/geogram_psm/MultiPrecision_psm.cpp
@@ -25,6 +43,7 @@ target_include_directories(AccuSphGeom
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/geogram_psm>
     $<INSTALL_INTERFACE:include>
 )
+target_link_libraries(AccuSphGeom PUBLIC simd_fma)
 
 if(ACCUSPHGEOM_PREDICATES_USE_FLOAT)
   target_compile_definitions(AccuSphGeom PUBLIC ACCUSPHGEOM_PREDICATES_USE_FLOAT)
@@ -95,4 +114,16 @@ if(ACCUSPHGEOM_BUILD_TESTS)
     PRIVATE ACCUSPHGEOM_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   )
   add_test(NAME test_gca_constlat_intersection_baseline COMMAND test_gca_constlat_intersection_baseline)
+
+  if(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR)
+    add_executable(test_gca_constlat_eigen_pack
+      tests/test_gca_constlat_eigen_pack.cpp
+    )
+    target_link_libraries(test_gca_constlat_eigen_pack PRIVATE AccuSphGeom)
+    target_include_directories(test_gca_constlat_eigen_pack
+      PRIVATE ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
+    )
+    add_test(NAME test_gca_constlat_eigen_pack COMMAND test_gca_constlat_eigen_pack)
+  endif()
+
 endif()

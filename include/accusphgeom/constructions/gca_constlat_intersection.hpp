@@ -15,6 +15,14 @@ inline constexpr T gca_constlat_minor_arc_tol = static_cast<T>(1e-8);
 
 }  // namespace internal
 
+
+template <typename T>
+struct GcaConstLatIntersections {
+  numeric::Vec3<T> point_pos{};
+  numeric::Vec3<T> point_neg{};
+};
+
+
 template <typename T, typename StatusT>
 struct GcaConstLatTryResult {
   numeric::Vec3<T> point{};
@@ -33,7 +41,8 @@ inline GcaConstLatIntersections<T> accux_constlat(const numeric::Vec3<T>& a,
   const auto d = numeric::compensated_dot_product(
       std::array<T, 4>{s3.hi, s3.hi, s3.lo, s3.lo},
       std::array<T, 4>{zsq.hi, zsq.lo, zsq.hi, zsq.lo});
-  const auto e = numeric::two_sum(s2.hi, -d.hi);
+  const T neg_d_hi = -d.hi;
+  const auto e = numeric::two_sum(s2.hi, neg_d_hi);
   const T planar_sq = e.hi + (e.lo + s2.lo - d.lo);
   const auto s = numeric::acc_sqrt_re(planar_sq);
 
@@ -63,12 +72,6 @@ inline GcaConstLatIntersections<T> accux_constlat(const numeric::Vec3<T>& a,
                    -(y_num_neg.hi + y_num_neg.lo) / denom, z0};
   return out;
 }
-
-template <typename T, typename StatusT>
-struct GcaConstLatTryResult {
-  numeric::Vec3<T> point{};
-  StatusT status{};
-};
 
 template <typename T>
 inline auto
