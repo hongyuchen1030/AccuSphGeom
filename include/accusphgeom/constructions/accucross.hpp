@@ -29,14 +29,6 @@ inline Vec3Expansion2<T> accucross(const Vec3<T>& a, const Vec3<T>& b) {
 template <typename T>
 inline Vec3Expansion2<T> accucross(const Vec3<T>& a_hi, const Vec3<T>& a_lo,
                                    const Vec3<T>& b_hi, const Vec3<T>& b_lo) {
-  const bool a_exact =
-      a_lo[0] == T(0) && a_lo[1] == T(0) && a_lo[2] == T(0);
-  const bool b_exact =
-      b_lo[0] == T(0) && b_lo[1] == T(0) && b_lo[2] == T(0);
-  if (a_exact && b_exact) {
-    return accucross(a_hi, b_hi);
-  }
-
   const std::array<T, 8> x_lhs = {a_hi[1], a_hi[1], a_lo[1], a_lo[1],
                                   -a_hi[2], -a_hi[2], -a_lo[2], -a_lo[2]};
   const std::array<T, 8> x_rhs = {b_hi[2], b_lo[2], b_hi[2], b_lo[2],

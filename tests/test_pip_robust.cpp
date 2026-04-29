@@ -76,9 +76,10 @@ int main() {
   const Location loc_inside_tier3 =
       point_in_polygon_sphere(q_inside, poly, vertex_ids);
   const Location loc_inside_tier2 =
-      point_in_polygon_sphere(q_inside, 40, poly, vertex_ids);
+      point_in_polygon_sphere(q_inside, std::int64_t{40}, poly, vertex_ids);
   const Location loc_inside_tier1 =
-      point_in_polygon_sphere(q_inside, 40, r_outside, 50, poly, vertex_ids);
+      point_in_polygon_sphere(q_inside, std::int64_t{40}, r_outside,
+                              std::int64_t{50}, poly, vertex_ids);
   const std::vector<std::int64_t> overflow_vertex_ids = {
       std::numeric_limits<std::int64_t>::max() - 2,
       std::numeric_limits<std::int64_t>::max() - 1,
@@ -87,7 +88,8 @@ int main() {
   const Location loc_inside_overflow_tier3 =
       point_in_polygon_sphere(q_inside, poly, overflow_vertex_ids);
   const Location loc_inside_overflow_tier2 =
-      point_in_polygon_sphere(q_inside, 7, poly, overflow_vertex_ids);
+      point_in_polygon_sphere(q_inside, std::int64_t{7}, poly,
+                              overflow_vertex_ids);
 
   expect_equal(loc_vertex, Location::OnVertex,
                "adaptive/no-global-id: query on vertex");

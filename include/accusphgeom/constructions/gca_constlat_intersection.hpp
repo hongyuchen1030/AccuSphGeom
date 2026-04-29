@@ -1,12 +1,20 @@
 #pragma once
-
+#include <type_traits>
 #include <array>
 #include <stdexcept>
 
 #include "accusphgeom/constructions/accucross.hpp"
+#include "accusphgeom/numeric/mask.hpp"
 #include "accusphgeom/predicates/on_minor_arc.hpp"
 
 namespace accusphgeom::constructions {
+
+namespace internal {
+
+inline constexpr double gca_constlat_minor_arc_tol = 1e-8;
+
+}  // namespace internal
+
 
 template <typename T>
 struct GcaConstLatIntersections {
@@ -18,7 +26,7 @@ struct GcaConstLatIntersections {
 template <typename T>
 struct GcaConstLatTryResult {
   numeric::Vec3<T> point{};
-  int status{}; // 0 = ok, 1 = both valid, 2 = none valid
+  T status{};
 };
 
 template <typename T>
@@ -33,7 +41,8 @@ inline GcaConstLatIntersections<T> accux_constlat(const numeric::Vec3<T>& a,
   const auto d = numeric::compensated_dot_product(
       std::array<T, 4>{s3.hi, s3.hi, s3.lo, s3.lo},
       std::array<T, 4>{zsq.hi, zsq.lo, zsq.hi, zsq.lo});
-  const auto e = numeric::two_sum(s2.hi, -d.hi);
+  const T neg_d_hi = -d.hi;
+  const auto e = numeric::two_sum(s2.hi, neg_d_hi);
   const T planar_sq = e.hi + (e.lo + s2.lo - d.lo);
   const auto s = numeric::acc_sqrt_re(planar_sq);
 
@@ -65,46 +74,48 @@ inline GcaConstLatIntersections<T> accux_constlat(const numeric::Vec3<T>& a,
 }
 
 template <typename T>
-inline GcaConstLatTryResult<T>
+inline auto
 try_gca_constlat_intersection(const numeric::Vec3<T>& a,
                               const numeric::Vec3<T>& b,
                               T z0) {
   const auto c = accux_constlat(a, b, z0);
-  const T tol = T(1e-8);
+  const T tol = T(internal::gca_constlat_minor_arc_tol);
+  const T one = T(1);
 
-  const bool pos_finite =
-      std::isfinite(c.point_pos[0]) &
-      std::isfinite(c.point_pos[1]);
+  const auto pos_finite =
+      numeric::isfinite_mask(c.point_pos[0]) *
+      numeric::isfinite_mask(c.point_pos[1]);
 
-  const bool neg_finite =
-      std::isfinite(c.point_neg[0]) &
-      std::isfinite(c.point_neg[1]);
+  const auto neg_finite =
+      numeric::isfinite_mask(c.point_neg[0]) *
+      numeric::isfinite_mask(c.point_neg[1]);
 
-  const bool pos_on_arc =
-      pos_finite & predicates::on_minor_arc_tol_ptr(c.point_pos, a, b, tol);
+  const auto pos_on_arc =
+      pos_finite *
+      predicates::internal::on_minor_arc_tol_ptr(c.point_pos.data(), a.data(),
+                                                 b.data(), tol);
 
-  const bool neg_on_arc =
-      neg_finite & predicates::on_minor_arc_tol_ptr(c.point_neg, a, b, tol);
+  const auto neg_on_arc =
+      neg_finite *
+      predicates::internal::on_minor_arc_tol_ptr(c.point_neg.data(), a.data(),
+                                                 b.data(), tol);
 
-  const int pos_valid = pos_finite & pos_on_arc;
-  const int neg_valid = neg_finite & neg_on_arc;
+  const auto pos_valid = pos_finite * pos_on_arc;
+  const auto neg_valid = neg_finite * neg_on_arc;
 
-  // mask-based selection 
-  const T pos_mask = static_cast<T>(pos_valid & !neg_valid);
-  const T neg_mask = static_cast<T>(neg_valid & !pos_valid);
+  const auto pos_mask = pos_valid * (one - neg_valid);
+  const auto neg_mask = neg_valid * (one - pos_valid);
 
   numeric::Vec3<T> out{};
   out[0] = pos_mask * c.point_pos[0] + neg_mask * c.point_neg[0];
   out[1] = pos_mask * c.point_pos[1] + neg_mask * c.point_neg[1];
   out[2] = pos_mask * c.point_pos[2] + neg_mask * c.point_neg[2];
 
-  // status (minimal)
-  const int both = pos_valid & neg_valid;
-  const int none = (!pos_valid) & (!neg_valid);
+  const auto both = pos_valid * neg_valid;
+  const auto none = (one - pos_valid) * (one - neg_valid);
+  const auto status = both + none * T(2);
 
-  const int status = both ? 1 : (none ? 2 : 0);
-
-  return {out, status};
+  return GcaConstLatTryResult<T>{out, status};
 }
 
 template <typename T>
@@ -112,11 +123,15 @@ inline numeric::Vec3<T>
 gca_constlat_intersection(const numeric::Vec3<T>& a,
                           const numeric::Vec3<T>& b,
                           T z0) {
+  static_assert(std::is_arithmetic_v<T>,
+                "gca_constlat_intersection is scalar-only; use "
+                "try_gca_constlat_intersection for packed/SIMD types.");
+
   const auto r = try_gca_constlat_intersection(a, b, z0);
 
-  if (r.status == 0) return r.point;
+  if (r.status == T(0)) return r.point;
 
-  if (r.status == 1) {
+  if (r.status == T(1)) {
     throw std::domain_error("both intersections lie on the minor arc");
   }
 

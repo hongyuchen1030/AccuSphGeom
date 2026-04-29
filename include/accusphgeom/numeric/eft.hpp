@@ -6,7 +6,7 @@
 #include <stdexcept>
 
 #include "accusphgeom/numeric/simd_fma.hpp"
-
+#include "accusphgeom/numeric/sqrt.hpp"
 namespace accusphgeom::numeric {
 
 template <typename T>
@@ -27,9 +27,11 @@ struct Vec3Expansion2 {
 template <typename T>
 inline Expansion2<T> two_prod_fma(T a, T b) {
   const T x = a * b;
-  const T y = simd_fma(a, b, -x);
+  const T neg_x = -x;
+  const T y = simd_fma(a, b, neg_x);
   return {x, y};
 }
+
 
 template <typename T>
 inline Expansion2<T> two_square_fma(T a) {
@@ -47,7 +49,8 @@ inline Expansion2<T> two_sum(T a, T b) {
 template <typename T>
 inline Expansion2<T> accurate_difference_of_products(T a, T b, T c, T d) {
   const Expansion2<T> prod1 = two_prod_fma(a, b);
-  const Expansion2<T> prod2 = two_prod_fma(c, -d);
+  const T neg_d = -d;
+  const Expansion2<T> prod2 = two_prod_fma(c, neg_d);
   const Expansion2<T> sum = two_sum(prod1.hi, prod2.hi);
   return {sum.hi, prod1.lo + (sum.lo + prod2.lo)};
 }
@@ -81,13 +84,7 @@ inline Expansion2<T> sum_of_squares_c(const std::array<T, N>& high,
 
 template <typename T>
 inline Expansion2<T> acc_sqrt_re(T value, T error = T(0)) {
-  if (value < T(0)) {
-    throw std::domain_error("acc_sqrt_re: negative radicand");
-  }
-  if (value == T(0)) {
-    return {T(0), T(0)};
-  }
-  const T root = std::sqrt(value);
+  const T root = numeric_sqrt(value);
   const Expansion2<T> square = two_square_fma(root);
   const T residual = (value - square.hi) - square.lo + error;
   const T correction = residual / (T(2) * root);
@@ -106,7 +103,7 @@ inline T dot3(const Vec3<T>& a, const Vec3<T>& b) {
 
 template <typename T>
 inline T norm3(const Vec3<T>& v) {
-  return std::sqrt(dot3(v, v));
+  return numeric_sqrt(dot3(v, v));
 }
 
 template <typename T>

@@ -21,24 +21,28 @@ Location point_in_polygon_sphere(const double* q,
                                  const double* const* polygon,
                                  std::size_t n);
 
-Location point_in_polygon_sphere(const double* q,
-                                 const double* const* polygon,
-                                 const std::int64_t* global_vertex_ids,
-                                 std::size_t n);
+namespace detail {
 
-Location point_in_polygon_sphere(const double* q,
-                                 std::int64_t q_id,
-                                 const double* const* polygon,
-                                 const std::int64_t* global_vertex_ids,
-                                 std::size_t n);
+Location point_in_polygon_sphere_impl(const double* q,
+                                      const double* const* polygon,
+                                      const std::int64_t* compact_vertex_ids,
+                                      std::size_t n);
 
-Location point_in_polygon_sphere(const double* q,
-                                 std::int64_t q_id,
-                                 const double* r,
-                                 std::int64_t r_id,
-                                 const double* const* polygon,
-                                 const std::int64_t* global_vertex_ids,
-                                 std::size_t n);
+Location point_in_polygon_sphere_impl(const double* q,
+                                      std::int64_t q_id,
+                                      const double* const* polygon,
+                                      const std::int64_t* compact_vertex_ids,
+                                      std::size_t n);
+
+Location point_in_polygon_sphere_impl(const double* q,
+                                      std::int64_t q_id,
+                                      const double* r,
+                                      std::int64_t r_id,
+                                      const double* const* polygon,
+                                      const std::int64_t* compact_vertex_ids,
+                                      std::size_t n);
+
+}  // namespace detail
 
 template <std::size_t N>
 inline Location point_in_polygon_sphere(
@@ -55,98 +59,15 @@ Location point_in_polygon_sphere(
     const std::array<double, 3>& q,
     const std::vector<std::array<double, 3>>& polygon);
 
-template <std::size_t N>
-inline Location point_in_polygon_sphere(
-    const std::array<double, 3>& q,
-    const std::array<std::array<double, 3>, N>& polygon,
-    const std::array<std::int64_t, N>& global_vertex_ids) {
-  std::array<const double*, N> ptrs{};
-  for (std::size_t i = 0; i < N; ++i) {
-    ptrs[i] = polygon[i].data();
-  }
-  return point_in_polygon_sphere(q.data(), ptrs.data(), global_vertex_ids.data(),
-                                 N);
-}
-
-Location point_in_polygon_sphere(
-    const std::array<double, 3>& q,
-    const std::vector<std::array<double, 3>>& polygon,
-    const std::vector<std::int64_t>& global_vertex_ids);
-
-template <std::size_t N>
-inline Location point_in_polygon_sphere(
-    const std::array<double, 3>& q,
-    std::int64_t q_id,
-    const std::array<std::array<double, 3>, N>& polygon,
-    const std::array<std::int64_t, N>& global_vertex_ids) {
-  std::array<const double*, N> ptrs{};
-  for (std::size_t i = 0; i < N; ++i) {
-    ptrs[i] = polygon[i].data();
-  }
-  return point_in_polygon_sphere(q.data(), q_id, ptrs.data(),
-                                 global_vertex_ids.data(), N);
-}
-
-Location point_in_polygon_sphere(
-    const std::array<double, 3>& q,
-    std::int64_t q_id,
-    const std::vector<std::array<double, 3>>& polygon,
-    const std::vector<std::int64_t>& global_vertex_ids);
-
-template <std::size_t N>
-inline Location point_in_polygon_sphere(
-    const std::array<double, 3>& q,
-    std::int64_t q_id,
-    const std::array<double, 3>& r,
-    std::int64_t r_id,
-    const std::array<std::array<double, 3>, N>& polygon,
-    const std::array<std::int64_t, N>& global_vertex_ids) {
-  std::array<const double*, N> ptrs{};
-  for (std::size_t i = 0; i < N; ++i) {
-    ptrs[i] = polygon[i].data();
-  }
-  return point_in_polygon_sphere(q.data(), q_id, r.data(), r_id, ptrs.data(),
-                                 global_vertex_ids.data(), N);
-}
-
-Location point_in_polygon_sphere(
-    const std::array<double, 3>& q,
-    std::int64_t q_id,
-    const std::array<double, 3>& r,
-    std::int64_t r_id,
-    const std::vector<std::array<double, 3>>& polygon,
-    const std::vector<std::int64_t>& global_vertex_ids);
-
 Location point_in_polygon_sphere(
     const std::vector<double>& q,
     const std::vector<std::vector<double>>& polygon);
 
-Location point_in_polygon_sphere(
-    const std::vector<double>& q,
-    const std::vector<std::vector<double>>& polygon,
-    const std::vector<std::int64_t>& global_vertex_ids);
-
-Location point_in_polygon_sphere(
-    const std::vector<double>& q,
-    std::int64_t q_id,
-    const std::vector<std::vector<double>>& polygon,
-    const std::vector<std::int64_t>& global_vertex_ids);
-
-Location point_in_polygon_sphere(
-    const std::vector<double>& q,
-    std::int64_t q_id,
-    const std::vector<double>& r,
-    std::int64_t r_id,
-    const std::vector<std::vector<double>>& polygon,
-    const std::vector<std::int64_t>& global_vertex_ids);
-
 namespace detail {
 
 template <typename GlobalId>
-using EnableIfSupportedGlobalId = std::enable_if_t<
-    std::is_integral_v<GlobalId> &&
-    !std::is_same_v<std::remove_cv_t<GlobalId>, std::int64_t>,
-    int>;
+using EnableIfSupportedGlobalId = std::enable_if_t<std::is_integral_v<GlobalId>,
+                                                   int>;
 
 template <typename GlobalId, EnableIfSupportedGlobalId<GlobalId> = 0>
 inline std::int64_t convert_global_id(GlobalId id) {
@@ -165,20 +86,20 @@ template <typename GlobalId,
           std::size_t N,
           EnableIfSupportedGlobalId<GlobalId> = 0>
 inline std::array<std::int64_t, N> convert_global_vertex_ids(
-    const std::array<GlobalId, N>& global_vertex_ids) {
+    const std::array<GlobalId, N>& compact_vertex_ids) {
   std::array<std::int64_t, N> converted{};
   for (std::size_t i = 0; i < N; ++i) {
-    converted[i] = convert_global_id(global_vertex_ids[i]);
+    converted[i] = convert_global_id(compact_vertex_ids[i]);
   }
   return converted;
 }
 
 template <typename GlobalId, EnableIfSupportedGlobalId<GlobalId> = 0>
 inline std::vector<std::int64_t> convert_global_vertex_ids(
-    const std::vector<GlobalId>& global_vertex_ids) {
+    const std::vector<GlobalId>& compact_vertex_ids) {
   std::vector<std::int64_t> converted;
-  converted.reserve(global_vertex_ids.size());
-  for (const GlobalId id : global_vertex_ids) {
+  converted.reserve(compact_vertex_ids.size());
+  for (const GlobalId id : compact_vertex_ids) {
     converted.push_back(convert_global_id(id));
   }
   return converted;
@@ -186,16 +107,16 @@ inline std::vector<std::int64_t> convert_global_vertex_ids(
 
 template <typename GlobalId, EnableIfSupportedGlobalId<GlobalId> = 0>
 inline std::vector<std::int64_t> convert_global_vertex_ids(
-    const GlobalId* global_vertex_ids,
+    const GlobalId* compact_vertex_ids,
     std::size_t n) {
-  if (!global_vertex_ids) {
+  if (!compact_vertex_ids) {
     throw std::invalid_argument(
-        "point_in_polygon_sphere: global_vertex_ids is null");
+        "point_in_polygon_sphere: compact_vertex_ids is null");
   }
   std::vector<std::int64_t> converted;
   converted.reserve(n);
   for (std::size_t i = 0; i < n; ++i) {
-    converted.push_back(convert_global_id(global_vertex_ids[i]));
+    converted.push_back(convert_global_id(compact_vertex_ids[i]));
   }
   return converted;
 }
@@ -242,13 +163,13 @@ inline predicates::Sign exact_sign_det2_sos(double a00, double a01, double a10,
   return predicates::orient3d_on_sphere(r0, r1, r2);
 }
 
-inline SymbolicRanks build_symbolic_ranks(const std::int64_t* global_vertex_ids,
+inline SymbolicRanks build_symbolic_ranks(const std::int64_t* compact_vertex_ids,
                                           std::size_t n,
                                           std::int64_t q_id,
                                           std::int64_t r_id) {
-  if (!global_vertex_ids) {
+  if (!compact_vertex_ids) {
     throw std::invalid_argument(
-        "point_in_polygon_sphere: global_vertex_ids is null");
+        "point_in_polygon_sphere: compact_vertex_ids is null");
   }
   if (q_id < 0 || r_id < 0) {
     throw std::invalid_argument(
@@ -258,11 +179,11 @@ inline SymbolicRanks build_symbolic_ranks(const std::int64_t* global_vertex_ids,
   std::vector<std::pair<std::int64_t, std::size_t>> ids;
   ids.reserve(n + 2);
   for (std::size_t i = 0; i < n; ++i) {
-    if (global_vertex_ids[i] < 0) {
+    if (compact_vertex_ids[i] < 0) {
       throw std::invalid_argument(
           "point_in_polygon_sphere: global IDs must be nonnegative");
     }
-    ids.emplace_back(global_vertex_ids[i], i);
+    ids.emplace_back(compact_vertex_ids[i], i);
   }
   const std::size_t q_slot = n;
   const std::size_t r_slot = n + 1;
@@ -301,19 +222,19 @@ inline SymbolicRanks build_symbolic_ranks(const std::int64_t* global_vertex_ids,
 }
 
 inline InternalSymbolicIds assign_internal_symbolic_ids(
-    const std::int64_t* global_vertex_ids,
+    const std::int64_t* compact_vertex_ids,
     std::size_t n,
     bool assign_q_id) {
-  if (!global_vertex_ids) {
+  if (!compact_vertex_ids) {
     throw std::invalid_argument(
-        "point_in_polygon_sphere: global_vertex_ids is null");
+        "point_in_polygon_sphere: compact_vertex_ids is null");
   }
 
   std::int64_t max_id = -1;
   std::vector<std::int64_t> ids;
   ids.reserve(n);
   for (std::size_t i = 0; i < n; ++i) {
-    const std::int64_t id = global_vertex_ids[i];
+    const std::int64_t id = compact_vertex_ids[i];
     if (id < 0) {
       throw std::invalid_argument(
           "point_in_polygon_sphere: global IDs must be nonnegative");
@@ -467,32 +388,38 @@ inline Location point_in_polygon_sphere(const double* q,
                                         std::size_t n) {
   const std::vector<std::int64_t> converted =
       detail::convert_global_vertex_ids(global_vertex_ids, n);
-  return point_in_polygon_sphere(q, polygon, converted.data(), n);
+  return detail::point_in_polygon_sphere_impl(q, polygon, converted.data(), n);
 }
 
 template <typename GlobalId, detail::EnableIfSupportedGlobalId<GlobalId> = 0>
 inline Location point_in_polygon_sphere(const double* q,
-                                        std::int64_t q_id,
+                                        GlobalId q_id,
                                         const double* const* polygon,
                                         const GlobalId* global_vertex_ids,
                                         std::size_t n) {
   const std::vector<std::int64_t> converted =
       detail::convert_global_vertex_ids(global_vertex_ids, n);
-  return point_in_polygon_sphere(q, q_id, polygon, converted.data(), n);
+  return detail::point_in_polygon_sphere_impl(
+      q, detail::convert_global_id(q_id), polygon, converted.data(), n);
 }
 
 template <typename GlobalId, detail::EnableIfSupportedGlobalId<GlobalId> = 0>
 inline Location point_in_polygon_sphere(const double* q,
-                                        std::int64_t q_id,
+                                        GlobalId q_id,
                                         const double* r,
-                                        std::int64_t r_id,
+                                        GlobalId r_id,
                                         const double* const* polygon,
                                         const GlobalId* global_vertex_ids,
                                         std::size_t n) {
   const std::vector<std::int64_t> converted =
       detail::convert_global_vertex_ids(global_vertex_ids, n);
-  return point_in_polygon_sphere(
-      q, q_id, r, r_id, polygon, converted.data(), n);
+  return detail::point_in_polygon_sphere_impl(q,
+                                              detail::convert_global_id(q_id),
+                                              r,
+                                              detail::convert_global_id(r_id),
+                                              polygon,
+                                              converted.data(),
+                                              n);
 }
 
 template <std::size_t N,
@@ -504,7 +431,12 @@ inline Location point_in_polygon_sphere(
     const std::array<GlobalId, N>& global_vertex_ids) {
   const std::array<std::int64_t, N> converted =
       detail::convert_global_vertex_ids(global_vertex_ids);
-  return point_in_polygon_sphere(q, polygon, converted);
+  std::array<const double*, N> ptrs{};
+  for (std::size_t i = 0; i < N; ++i) {
+    ptrs[i] = polygon[i].data();
+  }
+  return detail::point_in_polygon_sphere_impl(q.data(), ptrs.data(),
+                                              converted.data(), N);
 }
 
 template <typename GlobalId, detail::EnableIfSupportedGlobalId<GlobalId> = 0>
@@ -514,7 +446,13 @@ inline Location point_in_polygon_sphere(
     const std::vector<GlobalId>& global_vertex_ids) {
   const std::vector<std::int64_t> converted =
       detail::convert_global_vertex_ids(global_vertex_ids);
-  return point_in_polygon_sphere(q, polygon, converted);
+  std::vector<const double*> ptrs;
+  ptrs.reserve(polygon.size());
+  for (const auto& vertex : polygon) {
+    ptrs.push_back(vertex.data());
+  }
+  return detail::point_in_polygon_sphere_impl(q.data(), ptrs.data(),
+                                              converted.data(), ptrs.size());
 }
 
 template <std::size_t N,
@@ -522,23 +460,40 @@ template <std::size_t N,
           detail::EnableIfSupportedGlobalId<GlobalId> = 0>
 inline Location point_in_polygon_sphere(
     const std::array<double, 3>& q,
-    std::int64_t q_id,
+    GlobalId q_id,
     const std::array<std::array<double, 3>, N>& polygon,
     const std::array<GlobalId, N>& global_vertex_ids) {
   const std::array<std::int64_t, N> converted =
       detail::convert_global_vertex_ids(global_vertex_ids);
-  return point_in_polygon_sphere(q, q_id, polygon, converted);
+  std::array<const double*, N> ptrs{};
+  for (std::size_t i = 0; i < N; ++i) {
+    ptrs[i] = polygon[i].data();
+  }
+  return detail::point_in_polygon_sphere_impl(q.data(),
+                                              detail::convert_global_id(q_id),
+                                              ptrs.data(),
+                                              converted.data(),
+                                              N);
 }
 
 template <typename GlobalId, detail::EnableIfSupportedGlobalId<GlobalId> = 0>
 inline Location point_in_polygon_sphere(
     const std::array<double, 3>& q,
-    std::int64_t q_id,
+    GlobalId q_id,
     const std::vector<std::array<double, 3>>& polygon,
     const std::vector<GlobalId>& global_vertex_ids) {
   const std::vector<std::int64_t> converted =
       detail::convert_global_vertex_ids(global_vertex_ids);
-  return point_in_polygon_sphere(q, q_id, polygon, converted);
+  std::vector<const double*> ptrs;
+  ptrs.reserve(polygon.size());
+  for (const auto& vertex : polygon) {
+    ptrs.push_back(vertex.data());
+  }
+  return detail::point_in_polygon_sphere_impl(q.data(),
+                                              detail::convert_global_id(q_id),
+                                              ptrs.data(),
+                                              converted.data(),
+                                              ptrs.size());
 }
 
 template <std::size_t N,
@@ -546,27 +501,48 @@ template <std::size_t N,
           detail::EnableIfSupportedGlobalId<GlobalId> = 0>
 inline Location point_in_polygon_sphere(
     const std::array<double, 3>& q,
-    std::int64_t q_id,
+    GlobalId q_id,
     const std::array<double, 3>& r,
-    std::int64_t r_id,
+    GlobalId r_id,
     const std::array<std::array<double, 3>, N>& polygon,
     const std::array<GlobalId, N>& global_vertex_ids) {
   const std::array<std::int64_t, N> converted =
       detail::convert_global_vertex_ids(global_vertex_ids);
-  return point_in_polygon_sphere(q, q_id, r, r_id, polygon, converted);
+  std::array<const double*, N> ptrs{};
+  for (std::size_t i = 0; i < N; ++i) {
+    ptrs[i] = polygon[i].data();
+  }
+  return detail::point_in_polygon_sphere_impl(q.data(),
+                                              detail::convert_global_id(q_id),
+                                              r.data(),
+                                              detail::convert_global_id(r_id),
+                                              ptrs.data(),
+                                              converted.data(),
+                                              N);
 }
 
 template <typename GlobalId, detail::EnableIfSupportedGlobalId<GlobalId> = 0>
 inline Location point_in_polygon_sphere(
     const std::array<double, 3>& q,
-    std::int64_t q_id,
+    GlobalId q_id,
     const std::array<double, 3>& r,
-    std::int64_t r_id,
+    GlobalId r_id,
     const std::vector<std::array<double, 3>>& polygon,
     const std::vector<GlobalId>& global_vertex_ids) {
   const std::vector<std::int64_t> converted =
       detail::convert_global_vertex_ids(global_vertex_ids);
-  return point_in_polygon_sphere(q, q_id, r, r_id, polygon, converted);
+  std::vector<const double*> ptrs;
+  ptrs.reserve(polygon.size());
+  for (const auto& vertex : polygon) {
+    ptrs.push_back(vertex.data());
+  }
+  return detail::point_in_polygon_sphere_impl(q.data(),
+                                              detail::convert_global_id(q_id),
+                                              r.data(),
+                                              detail::convert_global_id(r_id),
+                                              ptrs.data(),
+                                              converted.data(),
+                                              ptrs.size());
 }
 
 template <typename GlobalId, detail::EnableIfSupportedGlobalId<GlobalId> = 0>
@@ -576,31 +552,57 @@ inline Location point_in_polygon_sphere(
     const std::vector<GlobalId>& global_vertex_ids) {
   const std::vector<std::int64_t> converted =
       detail::convert_global_vertex_ids(global_vertex_ids);
-  return point_in_polygon_sphere(q, polygon, converted);
+  std::vector<const double*> ptrs;
+  ptrs.reserve(polygon.size());
+  for (const auto& vertex : polygon) {
+    ptrs.push_back(vertex.data());
+  }
+  return detail::point_in_polygon_sphere_impl(q.data(), ptrs.data(),
+                                              converted.data(), ptrs.size());
 }
 
 template <typename GlobalId, detail::EnableIfSupportedGlobalId<GlobalId> = 0>
 inline Location point_in_polygon_sphere(
     const std::vector<double>& q,
-    std::int64_t q_id,
+    GlobalId q_id,
     const std::vector<std::vector<double>>& polygon,
     const std::vector<GlobalId>& global_vertex_ids) {
   const std::vector<std::int64_t> converted =
       detail::convert_global_vertex_ids(global_vertex_ids);
-  return point_in_polygon_sphere(q, q_id, polygon, converted);
+  std::vector<const double*> ptrs;
+  ptrs.reserve(polygon.size());
+  for (const auto& vertex : polygon) {
+    ptrs.push_back(vertex.data());
+  }
+  return detail::point_in_polygon_sphere_impl(q.data(),
+                                              detail::convert_global_id(q_id),
+                                              ptrs.data(),
+                                              converted.data(),
+                                              ptrs.size());
 }
 
 template <typename GlobalId, detail::EnableIfSupportedGlobalId<GlobalId> = 0>
 inline Location point_in_polygon_sphere(
     const std::vector<double>& q,
-    std::int64_t q_id,
+    GlobalId q_id,
     const std::vector<double>& r,
-    std::int64_t r_id,
+    GlobalId r_id,
     const std::vector<std::vector<double>>& polygon,
     const std::vector<GlobalId>& global_vertex_ids) {
   const std::vector<std::int64_t> converted =
       detail::convert_global_vertex_ids(global_vertex_ids);
-  return point_in_polygon_sphere(q, q_id, r, r_id, polygon, converted);
+  std::vector<const double*> ptrs;
+  ptrs.reserve(polygon.size());
+  for (const auto& vertex : polygon) {
+    ptrs.push_back(vertex.data());
+  }
+  return detail::point_in_polygon_sphere_impl(q.data(),
+                                              detail::convert_global_id(q_id),
+                                              r.data(),
+                                              detail::convert_global_id(r_id),
+                                              ptrs.data(),
+                                              converted.data(),
+                                              ptrs.size());
 }
 
 }  // namespace accusphgeom::algorithms

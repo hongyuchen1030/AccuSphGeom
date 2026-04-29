@@ -7,6 +7,8 @@
 #include <type_traits>
 #include <vector>
 
+#include "accusphgeom/numeric/abs.hpp"
+#include "accusphgeom/numeric/mask.hpp"
 #include "accusphgeom/predicates/orient3d.hpp"
 #include "accusphgeom/predicates/quadruple3d.hpp"
 
@@ -38,23 +40,28 @@ inline T orient3d_on_sphere_value(const T* a, const T* b, const T* q) {
 }
 
 template <class T>
-inline bool on_minor_arc_tol_ptr(const T* q,
-                                 const T* a,
-                                 const T* b,
-                                 T tolerance) {
+inline T on_minor_arc_tol_ptr(const T* q,
+                              const T* a,
+                              const T* b,
+                              T tolerance) {
   assert(q != nullptr);
   assert(a != nullptr);
   assert(b != nullptr);
 
-  const bool degenerate =
-      (a[0] == b[0]) & (a[1] == b[1]) & (a[2] == b[2]);
+  const T one = T(1);
+
+  const T eq0 = numeric::mask_equal(a[0], b[0]);
+  const T eq1 = numeric::mask_equal(a[1], b[1]);
+  const T eq2 = numeric::mask_equal(a[2], b[2]);
+  const T degenerate = eq0 * eq1 * eq2;
 
   const T orient_val =
       ((a[1] * b[2]) - (a[2] * b[1])) * q[0] +
       ((a[2] * b[0]) - (a[0] * b[2])) * q[1] +
       ((a[0] * b[1]) - (a[1] * b[0])) * q[2];
 
-  const bool orient_ok = std::abs(orient_val) <= tolerance;
+  const T orient_ok =
+      numeric::mask_le(numeric::numeric_abs(orient_val), tolerance);
 
   const T qa = a[0] * q[0] + a[1] * q[1] + a[2] * q[2];
   const T qb = b[0] * q[0] + b[1] * q[1] + b[2] * q[2];
@@ -62,11 +69,12 @@ inline bool on_minor_arc_tol_ptr(const T* q,
 
   const T s1_val = qb - ab * qa;
   const T s2_val = qa - qb * ab;
+  const T neg_tol = -tolerance;
 
-  const bool s1_ok = s1_val >= -tolerance;
-  const bool s2_ok = s2_val >= -tolerance;
+  const T s1_ok = numeric::mask_ge(s1_val, neg_tol);
+  const T s2_ok = numeric::mask_ge(s2_val, neg_tol);
 
-  return (!degenerate) & orient_ok & s1_ok & s2_ok;
+  return (one - degenerate) * orient_ok * s1_ok * s2_ok;
 }
 
 

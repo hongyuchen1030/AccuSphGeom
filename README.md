@@ -1,16 +1,46 @@
+
+
 # AccuSphGeom
 
 `AccuSphGeom` is a C++ library for **robust spherical geometry on the unit sphere**.
 
-The library is organized around two fundamental problem classes:
+The algorithms implemented in this repository are described in:
 
-1. **Construction problems**
-   Computing geometric quantities such as intersection points.
+Chen, H. (2026)
+*Accurate and Robust Algorithms for Spherical Polygon Operations*
+[https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/](https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/)
 
-2. **Predicate problems**
-   Robust classification and decision logic, such as point-in-polygon and arc membership.
+This repository provides a **reference implementation of all related algorithms** in that work.
+If you use the algorithm APIs (e.g., spherical point-in-polygon or latitude–longitude bounds), please cite the above paper.
 
 ---
+
+In addition, the construction layer is based on:
+
+Chen, H.
+*Accurate and Robust Great Circle Arc Intersection and Great Circle Arc Constant Latitude Intersection on the Sphere.*
+SIAM Journal on Scientific Computing
+[https://epubs.siam.org/doi/full/10.1137/25M1737614](https://epubs.siam.org/doi/full/10.1137/25M1737614)
+
+If you use the **construction APIs** (e.g., GCA–GCA or GCA–ConstLat intersection), please also cite this paper.
+
+---
+
+The library is organized in **two conceptual levels**:
+
+## Level 1: Fundamental Building Blocks
+
+* **Construction programs**
+  Accurate computation of geometric quantities (e.g., intersection points)
+
+* **Predicate programs**
+  Robust classification and decision logic (e.g., orientation, arc membership)
+
+## Level 2: Algorithms
+
+* **Spherical Point-in-Polygon (SPIP)**
+* **Latitude–Longitude Bounds (LatLon Bounds)**
+
 
 # 1. Installation & Quick Start
 
@@ -34,122 +64,131 @@ Include the library:
 
 ---
 
-# 2. Construction Problems (Intersection Computation)
+# 2. Algorithms
 
-The construction layer provides **accurate and vectorizable intersection point computation on the sphere**.
-
-This work is based on:
-
-* Chen, H. *Accurate and Robust Great Circle Arc Intersection and Great Circle Arc Constant Latitude Intersection on the Sphere.*
-  SIAM Journal on Scientific Computing
-  https://epubs.siam.org/doi/full/10.1137/25M1737614
+This section introduces the **algorithm-level APIs**, which combine predicates and constructions.
 
 ---
 
-## 2.1 Supported Intersection Types
+## 2.1 Latitude–Longitude Bounds
 
-The library provides two intersection types:
+The lat-lon bounds algorithm computes the bounding box of a spherical face.
 
-### Great-circle arc × Great-circle arc (GCA–GCA)
+### API Overview
+
+* `get_face_location_info(...)`
+
+  ```cpp
+  template <typename T, std::size_t N>
+  FaceLocationInfo<T> get_face_location_info(
+      const std::array<numeric::Vec3<T>, N>& face_vertices,
+      T polar_cap_lat_deg = static_cast<T>(default_polar_cap_lat_deg));
+  ```
+
+  Classifies one face using the user-provided `polar_cap_lat_deg`.
+  This cap separates local faces from north/south pole-candidate faces.
+  Returns both the classification label and latitude extrema (`face_z_max`, `face_z_min`).
+
+* `generate_lat_lon_bounds_local(...)`
+
+  ```cpp
+  template <typename T, std::size_t N>
+  LatLonBounds<T> generate_lat_lon_bounds_local(
+      const std::array<numeric::Vec3<T>, N>& face_vertices,
+      const FaceLocationInfo<T>& info,
+      T endpoint_lat_snap_tol_deg =
+          static_cast<T>(default_endpoint_lat_snap_tol_deg));
+  ```
+
+  Handles non-pole faces.
+  This is the dominant fast path and is fully SIMD-friendly.
+
+* `generate_lat_lon_bounds_pole(...)`
+
+  ```cpp
+  template <std::size_t N>
+  LatLonBounds<double> generate_lat_lon_bounds_pole(
+      const std::array<numeric::Vec3<double>, N>& face_vertices,
+      const FaceLocationInfo<double>& info,
+      const std::int64_t* global_vertex_ids = nullptr,
+      const std::int64_t* pole_query_id = nullptr,
+      const std::int64_t* waypoint_id = nullptr,
+      double endpoint_lat_snap_tol_deg = default_endpoint_lat_snap_tol_deg);
+  ```
+
+  Used only for pole-candidate faces.
+  It uses robust point-in-polygon logic and is not fully vectorized.
+
+* `generate_lat_lon_bounds(...)`
+
+  ```cpp
+  template <std::size_t N>
+  LatLonBounds<double> generate_lat_lon_bounds(
+      const std::array<numeric::Vec3<double>, N>& face_vertices,
+      double polar_cap_lat_deg = default_polar_cap_lat_deg,
+      const std::int64_t* global_vertex_ids = nullptr,
+      const std::int64_t* pole_query_id = nullptr,
+      const std::int64_t* waypoint_id = nullptr,
+      double endpoint_lat_snap_tol_deg = default_endpoint_lat_snap_tol_deg);
+  ```
+
+  Convenience dispatcher.
+  It calls `get_face_location_info(...)`, then routes to the local or pole path.
+  For performance-critical workflows, manually classify and dispatch.
+
+### Batch Dispatch Example
 
 ```cpp
-#include <accusphgeom/constructions/gca_gca_intersection.hpp>
-```
+#include <accusphgeom/algorithms/lat_lon_bounds.hpp>
 
-### Great-circle arc × Constant-latitude line (GCA–ConstLat)
+#include <array>
+#include <vector>
 
-```cpp
-#include <accusphgeom/constructions/gca_constlat_intersection.hpp>
-```
+using accusphgeom::algorithms::FaceLocationLabel;
+using accusphgeom::algorithms::LatLonBounds;
+using accusphgeom::algorithms::generate_lat_lon_bounds_local;
+using accusphgeom::algorithms::generate_lat_lon_bounds_pole;
+using accusphgeom::algorithms::get_face_location_info;
+using accusphgeom::numeric::Vec3;
 
----
+std::vector<LatLonBounds<double>> compute_bounds(
+    const std::vector<std::array<Vec3<double>, 4>>& faces) {
+  constexpr double polar_cap_lat_deg = 80.0;
 
-## 2.2 API Design
+  std::vector<LatLonBounds<double>> bounds;
+  bounds.reserve(faces.size());
 
-Each intersection routine provides two interfaces.
+  for (const auto& face : faces) {
+    const auto info = get_face_location_info(face, polar_cap_lat_deg);
 
-### Scalar API (convenience interface)
+    if (info.label == FaceLocationLabel::Local) {
+      bounds.push_back(generate_lat_lon_bounds_local(face, info));
+    } else {
+      bounds.push_back(generate_lat_lon_bounds_pole(face, info));
+    }
+  }
 
-```cpp
-auto p = accusphgeom::constructions::gca_gca_intersection(a0, a1, b0, b1);
-```
-
-* Returns the unique intersection point.
-* Throws `std::domain_error` if:
-
-  * no valid intersection exists, or
-  * both antipodal candidates satisfy the minor-arc constraints.
-
----
-
-### Vectorized / Batch API (performance interface)
-
-```cpp
-auto r = accusphgeom::constructions::try_gca_gca_intersection(a0, a1, b0, b1);
-```
-
-Returns:
-
-* `r.point` — mask-selected intersection point
-* `r.status` — classification flag
-
-Example:
-
-```cpp
-if (r.status == 0) {
-    use(r.point);
-} else {
-    // handle ambiguity or failure
+  return bounds;
 }
 ```
 
-This interface is designed for:
+Recommended high-performance workflow:
 
-* SIMD vectorization
-* batched execution
-* branch-free construction kernels
-
----
-
-### GCA–ConstLat follows the same pattern
-
-```cpp
-auto r = accusphgeom::constructions::try_gca_constlat_intersection(a0, a1, z0);
-```
+1. Call `get_face_location_info(...)`.
+2. Route local faces to `generate_lat_lon_bounds_local(...)`.
+3. Route pole-candidate faces to `generate_lat_lon_bounds_pole(...)`.
 
 ---
 
-## 2.3 Design Principle
+### Design Notes
 
-* **Scalar API**: convenience interface with exception-based handling
-* **try_ API**: performance interface returning explicit status for downstream control
-
----
-
-# 3. Predicate Problems
-
-The predicate layer provides **robust geometric classification and decision logic**.
-
-This work is based on:
-
-* Chen, H. (2026). *Accurate and Robust Algorithms for Spherical Polygon Operations.*
-  EGUsphere preprint
-  https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/
-  PDF: https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/egusphere-2026-636.pdf
+* The **local path dominates performance** and is designed for SIMD/vectorized execution
+* The **pole path is rare** and focuses on robustness rather than SIMD efficiency
+* Only the pole path incurs non-vectorizable overhead due to robust predicate usage
 
 ---
 
-## 3.1 Minor Arc Predicate
-
-```cpp
-#include <accusphgeom/predicates/on_minor_arc.hpp>
-
-bool on_arc = accusphgeom::predicates::on_minor_arc(q, a, b);
-```
-
----
-
-## 3.2 Spherical Point-in-Polygon (SPIP)
+## 2.2 Spherical Point-in-Polygon (SPIP)
 
 ```cpp
 #include <accusphgeom/algorithms/point_in_polygon_sphere.hpp>
@@ -166,10 +205,9 @@ Returns:
 
 ---
 
-## 3.3 Core Algorithm Notes for Spherical Point in Polygon (SPIP)
+### Core Algorithm Notes
 
-The ray endpoint `R` is normally chosen as a perturbed antipode of `q`, so the
-ray is geometrically well separated from the query.
+The ray endpoint `R` is normally chosen as a perturbed antipode of `q`.
 
 For each polygon edge `AB`, the crossing logic uses four orientation signs:
 
@@ -178,63 +216,168 @@ For each polygon edge `AB`, the crossing logic uses four orientation signs:
 * `s_AB_q = orient(A, B, q)`
 * `s_AB_R = orient(A, B, R)`
 
-In the nondegenerate case, the implementation uses the strict 4-sign crossing
-theorem: the arcs `qR` and `AB` cross if and only if the endpoint orientations
-are strictly separated on both supporting great circles.
+Crossing occurs if and only if the endpoints are strictly separated on both great circles.
 
-Boundary handling is performed before parity counting:
+Boundary handling:
 
-* if `q` exactly matches a polygon vertex, return `OnVertex`
-* if `q` lies on a polygon edge minor arc, return `OnEdge`
+* Exact vertex match → `OnVertex`
+* On minor arc → `OnEdge`
 
-The ray endpoint `R` is constructed as a perturbed antipode of `q`:
+Ray construction:
 
-* start from `-q`
-* perturb the least dominant coordinate
-* renormalize to the sphere
+* Start from `-q`
+* Perturb the least dominant coordinate
+* Renormalize
 
-If any polygon edge yields `s_AB_R == 0`, the algorithm throws an error. This
-typically indicates a polygon that is too large, close to hemispherical, or
-otherwise poorly separated from the ray construction.
+Degenerate cases (`s_AB_R == 0`) trigger an error.
 
 ---
 
-## 3.4 Robustness Tiers (With Global IDs)
+### Robustness Tiers (With Global IDs)
 
-When global IDs are available, **Simulation of Simplicity (SoS)** resolves
-ray-vertex degeneracies.
+Simulation of Simplicity (SoS) resolves degeneracies.
 
-| Tier       | Name           | Description                                                      |
-| :--------- | :------------- | :--------------------------------------------------------------- |
-| **Tier 1** | Full Global    | User provides `q`, `R`, and vertex IDs. Strongest mode.          |
-| **Tier 2** | Semi-Specified | User provides `q` and vertex IDs; library infers `R` and its ID. |
-| **Tier 3** | Local/Internal | User provides vertex IDs; library infers IDs for `q` and `R`.    |
-
----
-
-# 4. Architecture Overview
-
-The library is organized into three layers:
-
-1. **Predicates**
-   Robust classification and sign evaluation
-
-2. **Constructions**
-   High-accuracy geometric computations
-
-3. **Algorithms**
-   Built on top of predicates and constructions
+| Tier           | Description                            |
+| -------------- | -------------------------------------- |
+| Full Global    | User provides `q`, `R`, and vertex IDs |
+| Semi-Specified | User provides `q` and vertex IDs       |
+| Local/Internal | Library assigns IDs                    |
 
 ---
 
-# 5. Usage Guidance for Performance-Critical Workflows
+# 3. Construction Programs
 
-For high-performance applications:
+The construction layer provides **accurate and vectorizable intersection computations**.
 
-* Prefer `try_...` APIs
+Based on:
+
+Chen, H.
+*Accurate and Robust Great Circle Arc Intersection and Great Circle Arc Constant Latitude Intersection on the Sphere.*
+SIAM Journal on Scientific Computing
+[https://epubs.siam.org/doi/full/10.1137/25M1737614](https://epubs.siam.org/doi/full/10.1137/25M1737614)
+
+---
+
+## Supported Intersection Types
+
+### GCA–GCA
+
+```cpp
+#include <accusphgeom/constructions/gca_gca_intersection.hpp>
+```
+
+### GCA–ConstLat
+
+```cpp
+#include <accusphgeom/constructions/gca_constlat_intersection.hpp>
+```
+
+---
+
+## API Design
+
+### Scalar API
+
+```cpp
+auto p = accusphgeom::constructions::gca_gca_intersection(a0, a1, b0, b1);
+```
+
+* Returns intersection point
+* Throws on invalid or ambiguous cases
+
+---
+
+### Vectorized API
+
+```cpp
+auto r = accusphgeom::constructions::try_gca_gca_intersection(a0, a1, b0, b1);
+```
+
+Returns:
+
+* `r.point`
+* `r.status`
+
+Designed for:
+
+* SIMD execution
+* batched workflows
+* branch-free kernels
+
+---
+
+### GCA–ConstLat
+
+```cpp
+auto r = accusphgeom::constructions::try_gca_constlat_intersection(a0, a1, z0);
+```
+
+---
+
+## Design Principle
+
+* Scalar API: convenience
+* `try_` API: performance and control
+
+---
+
+# 4. Predicate Programs
+
+The predicate layer provides **robust geometric classification and decision logic**.
+
+---
+
+## Implemented Predicates
+
+### 1. Minor Arc Membership
+
+```cpp
+#include <accusphgeom/predicates/on_minor_arc.hpp>
+
+bool on_arc = accusphgeom::predicates::on_minor_arc(q, a, b);
+```
+
+---
+
+### 2. Orientation in 3D
+
+```cpp
+orient(a, b, c)
+```
+
+---
+
+### 3. Quadruple Product Predicate
+
+```cpp
+quadruple(a, b, c, d)
+```
+
+---
+
+These predicates provide the **robust foundation** for all higher-level algorithms.
+
+---
+
+# 5. Usage Guidance
+
+For performance-critical workflows:
+
+* Prefer `try_...` APIs for intersection calculations
+* For lat–lon bounds, first call `get_face_location_info(...)` (vectorized classification), then:
+
+  * use `generate_lat_lon_bounds_local(...)` for the dominant non-pole faces (SIMD-friendly)
+  * use `generate_lat_lon_bounds_pole(...)` only for pole candidates (robust, not fully vectorized)
 * Batch inputs where possible
-* Use returned `status` values as masks
-* Avoid scalar APIs in performance-critical loops
+* Use status flags as masks
+* Avoid scalar APIs in tight loops
+
+For GPU workflows:
+
+* Perform classification first
+* Separate local and pole workloads
+* Avoid mixed branching within kernels
+
 
 ---
 

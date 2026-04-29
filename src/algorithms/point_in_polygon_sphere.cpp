@@ -342,23 +342,26 @@ Location point_in_polygon_sphere(const std::vector<double>& q,
   return point_in_polygon_sphere(q.data(), ptrs.data(), ptrs.size());
 }
 
-Location point_in_polygon_sphere(const double* q,
-                                 const double* const* poly,
-                                 const std::int64_t* global_vertex_ids,
-                                 std::size_t n) {
+Location detail::point_in_polygon_sphere_impl(
+    const double* q,
+    const double* const* poly,
+    const std::int64_t* compact_vertex_ids,
+    std::size_t n) {
   // Tier 3: vertices have user IDs; q and the inferred perturbed-antipode
   // endpoint R receive internal IDs. The induced SoS ordering is therefore
   // deterministic per call, but not a fully user-controlled global ordering.
   const detail::InternalSymbolicIds assigned =
-      detail::assign_internal_symbolic_ids(global_vertex_ids, n, true);
-  return point_in_polygon_sphere(q, assigned.q_id, poly, global_vertex_ids, n);
+      detail::assign_internal_symbolic_ids(compact_vertex_ids, n, true);
+  return detail::point_in_polygon_sphere_impl(q, assigned.q_id, poly,
+                                              compact_vertex_ids, n);
 }
 
-Location point_in_polygon_sphere(const double* q,
-                                 std::int64_t q_id,
-                                 const double* const* poly,
-                                 const std::int64_t* global_vertex_ids,
-                                 std::size_t n) {
+Location detail::point_in_polygon_sphere_impl(
+    const double* q,
+    std::int64_t q_id,
+    const double* const* poly,
+    const std::int64_t* compact_vertex_ids,
+    std::size_t n) {
   // Tier 2: vertices and q have user IDs; only the inferred ray endpoint R is
   // assigned internally.
   if (validate_polygon_and_check_vertex(q, poly, n)) {
@@ -370,10 +373,10 @@ Location point_in_polygon_sphere(const double* q,
   }
 
   const detail::InternalSymbolicIds assigned =
-      detail::assign_internal_symbolic_ids(global_vertex_ids, n, false);
+      detail::assign_internal_symbolic_ids(compact_vertex_ids, n, false);
   const detail::SymbolicRanks ranks =
       detail::build_symbolic_ranks(
-          global_vertex_ids, n, q_id, assigned.r_id);
+          compact_vertex_ids, n, q_id, assigned.r_id);
 
   const std::array<double, 3> primary_ray = make_perturbed_antipode(q);
   const detail::FixedRayResult primary =
@@ -383,13 +386,14 @@ Location point_in_polygon_sphere(const double* q,
              : Location::Outside;
 }
 
-Location point_in_polygon_sphere(const double* q,
-                                 std::int64_t q_id,
-                                 const double* R,
-                                 std::int64_t r_id,
-                                 const double* const* poly,
-                                 const std::int64_t* global_vertex_ids,
-                                 std::size_t n) {
+Location detail::point_in_polygon_sphere_impl(
+    const double* q,
+    std::int64_t q_id,
+    const double* R,
+    std::int64_t r_id,
+    const double* const* poly,
+    const std::int64_t* compact_vertex_ids,
+    std::size_t n) {
   // Tier 1: q, R, and every vertex participate in one caller-defined symbolic
   // ordering.
   require_nonnull3(R, "R");
@@ -403,93 +407,13 @@ Location point_in_polygon_sphere(const double* q,
   }
 
   const detail::SymbolicRanks ranks =
-      detail::build_symbolic_ranks(global_vertex_ids, n, q_id, r_id);
+      detail::build_symbolic_ranks(compact_vertex_ids, n, q_id, r_id);
 
   const detail::FixedRayResult primary =
       classify_with_fixed_ray_sos(q, poly, ranks, n, R);
   return primary == detail::FixedRayResult::Inside
              ? Location::Inside
              : Location::Outside;
-}
-
-Location point_in_polygon_sphere(
-    const std::array<double, 3>& q,
-    const std::vector<std::array<double, 3>>& poly,
-    const std::vector<std::int64_t>& global_vertex_ids) {
-  validate_poly_and_query_sizes(poly.size(), global_vertex_ids.size());
-  auto ptrs = to_ptr_vector(poly);
-  return point_in_polygon_sphere(
-      q.data(), ptrs.data(), global_vertex_ids.data(), ptrs.size());
-}
-
-Location point_in_polygon_sphere(
-    const std::array<double, 3>& q,
-    std::int64_t q_id,
-    const std::vector<std::array<double, 3>>& poly,
-    const std::vector<std::int64_t>& global_vertex_ids) {
-  validate_poly_and_query_sizes(poly.size(), global_vertex_ids.size());
-  auto ptrs = to_ptr_vector(poly);
-  return point_in_polygon_sphere(
-      q.data(), q_id, ptrs.data(), global_vertex_ids.data(), ptrs.size());
-}
-
-Location point_in_polygon_sphere(
-    const std::array<double, 3>& q,
-    std::int64_t q_id,
-    const std::array<double, 3>& R,
-    std::int64_t r_id,
-    const std::vector<std::array<double, 3>>& poly,
-    const std::vector<std::int64_t>& global_vertex_ids) {
-  validate_poly_and_query_sizes(poly.size(), global_vertex_ids.size());
-  auto ptrs = to_ptr_vector(poly);
-  return point_in_polygon_sphere(q.data(),
-                                 q_id,
-                                 R.data(),
-                                 r_id,
-                                 ptrs.data(),
-                                 global_vertex_ids.data(),
-                                 ptrs.size());
-}
-
-Location point_in_polygon_sphere(
-    const std::vector<double>& q,
-    const std::vector<std::vector<double>>& poly,
-    const std::vector<std::int64_t>& global_vertex_ids) {
-  validate_poly_and_query_sizes(poly.size(), global_vertex_ids.size(), q.size());
-  auto ptrs = to_ptr_vector(poly);
-  return point_in_polygon_sphere(
-      q.data(), ptrs.data(), global_vertex_ids.data(), ptrs.size());
-}
-
-Location point_in_polygon_sphere(
-    const std::vector<double>& q,
-    std::int64_t q_id,
-    const std::vector<std::vector<double>>& poly,
-    const std::vector<std::int64_t>& global_vertex_ids) {
-  validate_poly_and_query_sizes(
-    poly.size(), global_vertex_ids.size(), q.size());
-  auto ptrs = to_ptr_vector(poly);
-  return point_in_polygon_sphere(
-      q.data(), q_id, ptrs.data(), global_vertex_ids.data(), ptrs.size());
-}
-
-Location point_in_polygon_sphere(
-    const std::vector<double>& q,
-    std::int64_t q_id,
-    const std::vector<double>& R,
-    std::int64_t r_id,
-    const std::vector<std::vector<double>>& poly,
-    const std::vector<std::int64_t>& global_vertex_ids) {
-  validate_poly_and_query_sizes(
-    poly.size(), global_vertex_ids.size(), q.size(), R.size());
-  auto ptrs = to_ptr_vector(poly);
-  return point_in_polygon_sphere(q.data(),
-                                 q_id,
-                                 R.data(),
-                                 r_id,
-                                 ptrs.data(),
-                                 global_vertex_ids.data(),
-                                 ptrs.size());
 }
 
 }  // namespace accusphgeom::algorithms
