@@ -287,7 +287,7 @@ auto p = accusphgeom::constructions::gca_gca_intersection(a0, a1, b0, b1);
 
 ---
 
-### Vectorized API
+### `try_` API for Packed / SIMD-Style Execution
 
 ```cpp
 auto r = accusphgeom::constructions::try_gca_gca_intersection(a0, a1, b0, b1);
@@ -300,9 +300,38 @@ Returns:
 
 Designed for:
 
-* SIMD execution
+* packed / SIMD-style execution
 * batched workflows
 * branch-free kernels
+
+The `try_...` construction APIs are the vectorizable interface.
+They support scalar `double`, and they also support packed numeric backends that
+behave like lane-wise arithmetic types.
+
+Current packed support includes Eigen arrays through the Eigen adapter header:
+
+```cpp
+#include <accusphgeom/adapters/eigen/numeric.hpp>
+```
+
+This enables packed usage such as:
+
+```cpp
+using Pack = EigenPack<4>;
+auto r = accusphgeom::constructions::try_gca_gca_intersection(a0, a1, b0, b1);
+```
+
+See the working examples in:
+
+* `tests/test_gca_constlat_eigen_pack.cpp`
+* `tests/test_gca_gca_eigen_pack.cpp`
+
+These examples show how to:
+
+* define packed `EigenPack<N>` coordinates
+* build `numeric::Vec3<Pack>` inputs
+* call the `try_...` APIs for batched lane-wise evaluation
+* compare packed outputs against scalar reference results
 
 ---
 
@@ -312,12 +341,19 @@ Designed for:
 auto r = accusphgeom::constructions::try_gca_constlat_intersection(a0, a1, z0);
 ```
 
+This follows the same packed / SIMD-style model and also works with the Eigen
+adapter shown above.
+
 ---
 
 ## Design Principle
 
 * Scalar API: convenience
-* `try_` API: performance and control
+* `try_` API: performance, vectorization, and control
+
+Today, Eigen is the supported packed backend for the construction `try_...`
+APIs. We plan to add `std::simd` support in the future using the same packed
+interface style.
 
 ---
 
