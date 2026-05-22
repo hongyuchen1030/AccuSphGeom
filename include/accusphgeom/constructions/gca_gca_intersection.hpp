@@ -37,7 +37,7 @@ inline GcaGcaIntersections<T> accux_gca(const numeric::Vec3<T>& a0,
   const auto v = accucross(n1.hi, n1.lo, n2.hi, n2.lo);
   const auto sum = numeric::sum_of_squares_c<T, 3>(v.hi, v.lo);
   const auto norm = numeric::acc_sqrt_re(sum.hi, sum.lo);
-  const T n = norm.hi + norm.lo;
+  const T n = norm.hi;
 
   const numeric::Vec3<T> point_pos = {(v.hi[0] + v.lo[0]) / n,
                                       (v.hi[1] + v.lo[1]) / n,
