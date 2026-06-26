@@ -1,0 +1,3 @@
+method,threadsNum,vec_width,time
+pure_fp,1,1,3.3645853335000000e-08
+pure_fp,1,4,2.6348020249999999e-09

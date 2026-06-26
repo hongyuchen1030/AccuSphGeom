@@ -14,12 +14,14 @@ find_path(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR Eigen/Dense
 )
 
 add_library(simd_fma INTERFACE)
-# Compilation options for FMA instructions
+
+# Compilation options for FMA instructions.
 target_compile_options(simd_fma INTERFACE -march=native -ffp-contract=off)
+
 # A note on -ffp-contract:
 #   The default on GCC (at least with -std=gnu17 instead of -std=c++17) is
 #   -fp-contract=fast, which can contract floating point multiplications and
-#   additions spanning across **multiple statements** into FMA instructions.
+#   additions spanning across multiple statements into FMA instructions.
 #   This can be surprising and change the roundoff behavior. This is especially
 #   unsafe for EFT algorithms, which rely fundamentally on the IEEE 754
 #   roundoff behavior implied by the sequence of statements as literally
@@ -43,6 +45,7 @@ target_include_directories(AccuSphGeom
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/geogram_psm>
     $<INSTALL_INTERFACE:include>
 )
+
 target_link_libraries(AccuSphGeom PUBLIC simd_fma)
 
 if(ACCUSPHGEOM_PREDICATES_USE_FLOAT)
@@ -116,6 +119,8 @@ if(ACCUSPHGEOM_BUILD_TESTS)
   add_test(NAME test_gca_constlat_intersection_baseline COMMAND test_gca_constlat_intersection_baseline)
 
   if(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR)
+    message(STATUS "Eigen3 found at: ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}")
+
     add_executable(test_gca_gca_eigen_pack
       tests/test_gca_gca_eigen_pack.cpp
     )
@@ -133,6 +138,38 @@ if(ACCUSPHGEOM_BUILD_TESTS)
       PRIVATE ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
     )
     add_test(NAME test_gca_constlat_eigen_pack COMMAND test_gca_constlat_eigen_pack)
+
+    add_executable(benchmark_gca_constlat_SIMDPack
+      tests/performance_test/benchmark_gca_constlat_SIMDPack.cpp
+      tests/performance_test/fp64_GCAconstLat.cc
+      tests/performance_test/fp64_GCAconstLat.hh
+    )
+
+    target_link_libraries(benchmark_gca_constlat_SIMDPack PRIVATE AccuSphGeom)
+
+    target_include_directories(benchmark_gca_constlat_SIMDPack
+      PRIVATE
+        ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/performance_test
+    )
+
+    if(MSVC)
+      target_compile_options(benchmark_gca_constlat_SIMDPack PRIVATE /O2)
+    else()
+      target_compile_options(benchmark_gca_constlat_SIMDPack
+        PRIVATE
+          -O3
+          -march=native
+          -ffp-contract=off
+          -fno-fast-math
+      )
+    endif()
+
+  else()
+    message(WARNING
+      "Eigen3 was not found. Eigen-pack tests and "
+      "benchmark_gca_constlat_SIMDPack will not be built."
+    )
   endif()
 
 endif()
