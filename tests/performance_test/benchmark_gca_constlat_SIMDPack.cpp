@@ -1,5 +1,8 @@
 #include <Eigen/Dense>
+#include <omp.h>
 
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <chrono>
 #include <cmath>
@@ -7,43 +10,71 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <type_traits>
+#include <vector>
 
 #include "accusphgeom/adapters/eigen/numeric.hpp"
+#include "accusphgeom/constructions/gca_constlat_intersection.hpp"
 #include "fp64_GCAconstLat.hh"
 
 namespace {
 
+using accusphgeom::constructions::accux_constlat;
 using accusphgeom::numeric::Vec3;
-using accusphgeom::performance_test::fp64_gca_constlat_pure_fp_xy;
+using accusphgeom::performance_test::fp64_gca_constlat_pure_fp;
 
 constexpr int kMaxVecWidth = 8;
-using Pack2 = EigenPack<2>;
-using Pack4 = EigenPack<4>;
-using Pack8 = EigenPack<8>;
-
-constexpr std::size_t kDefaultDataSize = 100000;
+constexpr std::size_t kDefaultDataSize = 1000000000;
 constexpr std::size_t kDefaultNumTests = 100;
+constexpr std::size_t kDefaultNumRepeats = 7;
 
-template <typename T>
-constexpr int vec_width() {
-  if constexpr (std::is_arithmetic_v<T>) {
-    return 1;
-  } else {
-    static_assert(T::SizeAtCompileTime != Eigen::Dynamic,
-                  "Pack type must have fixed compile-time size");
-    return T::SizeAtCompileTime;
+constexpr char kRepeatsCsvPath[] =
+    "tests/performance_test/output/gca_constlat_SIMDPack_timing_repeats.csv";
+constexpr char kSummaryCsvPath[] =
+    "tests/performance_test/output/gca_constlat_SIMDPack_timing_summary.csv";
+
+struct IntersectionBuffers {
+  Eigen::VectorXd pos_x;
+  Eigen::VectorXd pos_y;
+  Eigen::VectorXd pos_z;
+  Eigen::VectorXd neg_x;
+  Eigen::VectorXd neg_y;
+  Eigen::VectorXd neg_z;
+
+  explicit IntersectionBuffers(std::size_t size)
+      : pos_x(static_cast<Eigen::Index>(size)),
+        pos_y(static_cast<Eigen::Index>(size)),
+        pos_z(static_cast<Eigen::Index>(size)),
+        neg_x(static_cast<Eigen::Index>(size)),
+        neg_y(static_cast<Eigen::Index>(size)),
+        neg_z(static_cast<Eigen::Index>(size)) {}
+
+  void setZero() {
+    pos_x.setZero();
+    pos_y.setZero();
+    pos_z.setZero();
+    neg_x.setZero();
+    neg_y.setZero();
+    neg_z.setZero();
   }
-}
+};
 
-static_assert(vec_width<double>() == 1);
-static_assert(vec_width<Pack2>() == 2);
-static_assert(vec_width<Pack4>() == 4);
-static_assert(vec_width<Pack8>() == 8);
+struct SummaryStats {
+  double min_time = 0.0;
+  double median_time = 0.0;
+  double mean_time = 0.0;
+};
+
+struct MethodSummaryRow {
+  std::string method;
+  int threads_num = 0;
+  int vec_width = 0;
+  SummaryStats stats{};
+};
 
 void create_output_directory(const std::string& directory) {
   struct stat info;
@@ -71,75 +102,173 @@ void do_not_optimize(const T& value) {
 #endif
 }
 
-template <typename T>
-void compute_values_pure_fp(const Eigen::MatrixXd& ptsA,
-                            const Eigen::MatrixXd& ptsB,
-                            const Eigen::VectorXd& latitudes,
-                            Eigen::VectorXd& x,
-                            Eigen::VectorXd& y) {
-  constexpr int stride = vec_width<T>();
-  static_assert(stride > 0, "stride must be positive");
+void consume_output(const IntersectionBuffers& out) {
+  do_not_optimize(out.pos_x.data());
+  do_not_optimize(out.pos_y.data());
+  do_not_optimize(out.pos_z.data());
+  do_not_optimize(out.neg_x.data());
+  do_not_optimize(out.neg_y.data());
+  do_not_optimize(out.neg_z.data());
+}
 
-  const std::size_t size = static_cast<std::size_t>(ptsA.rows());
-  assert(size % stride == 0);
-
-  if ((ptsB.rows() != ptsA.rows()) || (latitudes.rows() != ptsA.rows()) ||
-      (x.rows() != ptsA.rows()) || (y.rows() != ptsA.rows())) {
-    throw std::runtime_error("All passed arrays must have the same size");
-  }
-
-  for (std::size_t i = 0; i < size; i += stride) {
-    Vec3<T> a{};
-    Vec3<T> b{};
-    T z0{};
-
-    if constexpr (std::is_arithmetic_v<T>) {
-      for (int c = 0; c < 3; ++c) {
-        a[c] = ptsA(static_cast<Eigen::Index>(i), c);
-        b[c] = ptsB(static_cast<Eigen::Index>(i), c);
-      }
-      z0 = latitudes(static_cast<Eigen::Index>(i));
-    } else {
-      for (int c = 0; c < 3; ++c) {
-        a[c] =
-            ptsA.template block<stride, 1>(static_cast<Eigen::Index>(i), c)
-                .array();
-        b[c] =
-            ptsB.template block<stride, 1>(static_cast<Eigen::Index>(i), c)
-                .array();
-      }
-      z0 = latitudes.template segment<stride>(static_cast<Eigen::Index>(i))
-               .array();
-    }
-
-    const auto [px, py] = fp64_gca_constlat_pure_fp_xy(a, b, z0);
-
-    if constexpr (std::is_arithmetic_v<T>) {
-      x(static_cast<Eigen::Index>(i)) = px;
-      y(static_cast<Eigen::Index>(i)) = py;
-    } else {
-      x.template segment<stride>(static_cast<Eigen::Index>(i)).array() = px;
-      y.template segment<stride>(static_cast<Eigen::Index>(i)).array() = py;
-    }
+void validate_sizes(const Eigen::MatrixXd& ptsA,
+                    const Eigen::MatrixXd& ptsB,
+                    const Eigen::VectorXd& latitudes,
+                    const IntersectionBuffers& out) {
+  if ((ptsA.cols() != 3) || (ptsB.cols() != 3) ||
+      (ptsB.rows() != ptsA.rows()) || (latitudes.rows() != ptsA.rows()) ||
+      (out.pos_x.rows() != ptsA.rows()) || (out.pos_y.rows() != ptsA.rows()) ||
+      (out.pos_z.rows() != ptsA.rows()) || (out.neg_x.rows() != ptsA.rows()) ||
+      (out.neg_y.rows() != ptsA.rows()) || (out.neg_z.rows() != ptsA.rows())) {
+    throw std::runtime_error("All passed arrays must have compatible sizes");
   }
 }
 
-template <typename T>
-double run_benchmark_pure_fp(std::size_t num_tests,
-                             const Eigen::MatrixXd& ptsA,
-                             const Eigen::MatrixXd& ptsB,
-                             const Eigen::VectorXd& latitudes,
-                             Eigen::VectorXd& x,
-                             Eigen::VectorXd& y) {
-  // One warm-up run outside timing.
-  compute_values_pure_fp<T>(ptsA, ptsB, latitudes, x, y);
+void store_scalar(
+    const accusphgeom::constructions::GcaConstLatIntersections<double>& p,
+    std::size_t i,
+    IntersectionBuffers& out) {
+  const auto ei = static_cast<Eigen::Index>(i);
+
+  out.pos_x(ei) = p.point_pos[0];
+  out.pos_y(ei) = p.point_pos[1];
+  out.pos_z(ei) = p.point_pos[2];
+
+  out.neg_x(ei) = p.point_neg[0];
+  out.neg_y(ei) = p.point_neg[1];
+  out.neg_z(ei) = p.point_neg[2];
+}
+
+template <int N>
+void store_pack(
+    const accusphgeom::constructions::GcaConstLatIntersections<EigenPack<N>>& p,
+    std::size_t i,
+    IntersectionBuffers& out) {
+  const auto ei = static_cast<Eigen::Index>(i);
+
+  out.pos_x.template segment<N>(ei).array() = p.point_pos[0];
+  out.pos_y.template segment<N>(ei).array() = p.point_pos[1];
+  out.pos_z.template segment<N>(ei).array() = p.point_pos[2];
+
+  out.neg_x.template segment<N>(ei).array() = p.point_neg[0];
+  out.neg_y.template segment<N>(ei).array() = p.point_neg[1];
+  out.neg_z.template segment<N>(ei).array() = p.point_neg[2];
+}
+
+struct PureFpKernel {
+  static constexpr const char* kMethod = "pure_fp";
+
+  static auto eval(const Vec3<double>& a, const Vec3<double>& b, double z0) {
+    return fp64_gca_constlat_pure_fp(a, b, z0);
+  }
+
+  template <int N>
+  static auto eval(const Vec3<EigenPack<N>>& a,
+                   const Vec3<EigenPack<N>>& b,
+                   const EigenPack<N>& z0) {
+    return fp64_gca_constlat_pure_fp<N>(a, b, z0);
+  }
+};
+
+struct AccuxKernel {
+  static constexpr const char* kMethod = "accux";
+
+  static auto eval(const Vec3<double>& a, const Vec3<double>& b, double z0) {
+    return accux_constlat(a, b, z0);
+  }
+
+  template <int N>
+  static auto eval(const Vec3<EigenPack<N>>& a,
+                   const Vec3<EigenPack<N>>& b,
+                   const EigenPack<N>& z0) {
+    return accux_constlat(a, b, z0);
+  }
+};
+
+template <typename Kernel>
+void compute_scalar(const Eigen::MatrixXd& ptsA,
+                    const Eigen::MatrixXd& ptsB,
+                    const Eigen::VectorXd& latitudes,
+                    IntersectionBuffers& out) {
+  validate_sizes(ptsA, ptsB, latitudes, out);
+
+  const std::size_t size = static_cast<std::size_t>(ptsA.rows());
+
+#pragma omp parallel for schedule(static)
+  for (long long ii = 0; ii < static_cast<long long>(size); ++ii) {
+    const std::size_t i = static_cast<std::size_t>(ii);
+    const auto ei = static_cast<Eigen::Index>(i);
+
+    Vec3<double> a{};
+    Vec3<double> b{};
+
+    a[0] = ptsA(ei, 0);
+    a[1] = ptsA(ei, 1);
+    a[2] = ptsA(ei, 2);
+
+    b[0] = ptsB(ei, 0);
+    b[1] = ptsB(ei, 1);
+    b[2] = ptsB(ei, 2);
+
+    const double z0 = latitudes(ei);
+    const auto p = Kernel::eval(a, b, z0);
+    store_scalar(p, i, out);
+  }
+}
+
+template <int N, typename Kernel>
+void compute_pack(const Eigen::MatrixXd& ptsA,
+                  const Eigen::MatrixXd& ptsB,
+                  const Eigen::VectorXd& latitudes,
+                  IntersectionBuffers& out) {
+  validate_sizes(ptsA, ptsB, latitudes, out);
+
+  const std::size_t size = static_cast<std::size_t>(ptsA.rows());
+  assert(size % N == 0);
+
+  const std::size_t num_packs = size / N;
+
+#pragma omp parallel for schedule(static)
+  for (long long pp = 0; pp < static_cast<long long>(num_packs); ++pp) {
+    const std::size_t i = static_cast<std::size_t>(pp) * N;
+    const auto ei = static_cast<Eigen::Index>(i);
+
+    Vec3<EigenPack<N>> a{};
+    Vec3<EigenPack<N>> b{};
+
+    a[0] = ptsA.template block<N, 1>(ei, 0).array();
+    a[1] = ptsA.template block<N, 1>(ei, 1).array();
+    a[2] = ptsA.template block<N, 1>(ei, 2).array();
+
+    b[0] = ptsB.template block<N, 1>(ei, 0).array();
+    b[1] = ptsB.template block<N, 1>(ei, 1).array();
+    b[2] = ptsB.template block<N, 1>(ei, 2).array();
+
+    const EigenPack<N> z0 = latitudes.template segment<N>(ei).array();
+    const auto p = Kernel::template eval<N>(a, b, z0);
+    store_pack<N>(p, i, out);
+  }
+}
+
+template <typename ComputeFn>
+double run_benchmark_trial(ComputeFn compute,
+                           std::size_t num_tests,
+                           const Eigen::MatrixXd& ptsA,
+                           const Eigen::MatrixXd& ptsB,
+                           const Eigen::VectorXd& latitudes,
+                           IntersectionBuffers& out,
+                           int threads_num) {
+  omp_set_num_threads(threads_num);
+
+  out.setZero();
+  compute(ptsA, ptsB, latitudes, out);
+  consume_output(out);
 
   const auto start = std::chrono::high_resolution_clock::now();
 
   for (std::size_t t = 0; t < num_tests; ++t) {
-    compute_values_pure_fp<T>(ptsA, ptsB, latitudes, x, y);
-    do_not_optimize(x.data());
-    do_not_optimize(y.data());
+    compute(ptsA, ptsB, latitudes, out);
+    consume_output(out);
   }
 
   const std::chrono::duration<double> elapsed =
@@ -148,8 +277,111 @@ double run_benchmark_pure_fp(std::size_t num_tests,
   return elapsed.count();
 }
 
-double l2_error(const Eigen::VectorXd& lhs, const Eigen::VectorXd& rhs) {
-  return (lhs - rhs).norm();
+double seconds_per_point(double total_seconds,
+                         std::size_t num_tests,
+                         std::size_t data_size) {
+  return total_seconds / static_cast<double>(num_tests * data_size);
+}
+
+SummaryStats summarize_times(const std::vector<double>& times) {
+  if (times.empty()) {
+    throw std::runtime_error("Cannot summarize an empty timing vector");
+  }
+
+  std::vector<double> sorted = times;
+  std::sort(sorted.begin(), sorted.end());
+
+  const double min_time = sorted.front();
+  const double sum = std::accumulate(sorted.begin(), sorted.end(), 0.0);
+  const double mean_time = sum / static_cast<double>(sorted.size());
+
+  double median_time = 0.0;
+  const std::size_t mid = sorted.size() / 2;
+  if ((sorted.size() % 2) == 0) {
+    median_time = 0.5 * (sorted[mid - 1] + sorted[mid]);
+  } else {
+    median_time = sorted[mid];
+  }
+
+  return SummaryStats{min_time, median_time, mean_time};
+}
+
+void write_repeat_row(std::ofstream& csv,
+                      const char* method,
+                      int threads_num,
+                      int vec_width,
+                      std::size_t repeat,
+                      double seconds_per_point_value) {
+  csv << method << "," << threads_num << "," << vec_width << "," << repeat
+      << "," << seconds_per_point_value << "\n";
+}
+
+void write_summary_row(std::ofstream& csv,
+                       const MethodSummaryRow& row) {
+  csv << row.method << "," << row.threads_num << "," << row.vec_width << ","
+      << row.stats.min_time << "," << row.stats.median_time << ","
+      << row.stats.mean_time << "\n";
+}
+
+void print_timing(const char* method,
+                  int threads_num,
+                  int vec_width,
+                  const SummaryStats& stats) {
+  std::cout << "  " << std::setw(7) << method << " threads=" << std::setw(2)
+            << threads_num << " width=" << vec_width << " median="
+            << std::fixed << std::setprecision(3) << stats.median_time * 1e9
+            << " ns/point min=" << stats.min_time * 1e9 << " ns/point\n";
+}
+
+template <typename Kernel>
+double run_width_trial(int vec_width,
+                       std::size_t num_tests,
+                       const Eigen::MatrixXd& ptsA,
+                       const Eigen::MatrixXd& ptsB,
+                       const Eigen::VectorXd& latitudes,
+                       IntersectionBuffers& out,
+                       int threads_num) {
+  switch (vec_width) {
+    case 1:
+      return seconds_per_point(
+          run_benchmark_trial(compute_scalar<Kernel>, num_tests, ptsA, ptsB,
+                              latitudes, out, threads_num),
+          num_tests, static_cast<std::size_t>(ptsA.rows()));
+    case 2:
+      return seconds_per_point(
+          run_benchmark_trial(compute_pack<2, Kernel>, num_tests, ptsA, ptsB,
+                              latitudes, out, threads_num),
+          num_tests, static_cast<std::size_t>(ptsA.rows()));
+    case 4:
+      return seconds_per_point(
+          run_benchmark_trial(compute_pack<4, Kernel>, num_tests, ptsA, ptsB,
+                              latitudes, out, threads_num),
+          num_tests, static_cast<std::size_t>(ptsA.rows()));
+    case 8:
+      return seconds_per_point(
+          run_benchmark_trial(compute_pack<8, Kernel>, num_tests, ptsA, ptsB,
+                              latitudes, out, threads_num),
+          num_tests, static_cast<std::size_t>(ptsA.rows()));
+    default:
+      throw std::invalid_argument("Unsupported vec_width");
+  }
+}
+
+template <typename Kernel>
+double run_and_record_trial(int vec_width,
+                            std::size_t repeat,
+                            std::size_t num_tests,
+                            const Eigen::MatrixXd& ptsA,
+                            const Eigen::MatrixXd& ptsB,
+                            const Eigen::VectorXd& latitudes,
+                            IntersectionBuffers& out,
+                            int threads_num,
+                            std::ofstream& repeats_csv) {
+  const double time = run_width_trial<Kernel>(vec_width, num_tests, ptsA, ptsB,
+                                              latitudes, out, threads_num);
+  write_repeat_row(repeats_csv, Kernel::kMethod, threads_num, vec_width, repeat,
+                   time);
+  return time;
 }
 
 }  // namespace
@@ -164,10 +396,16 @@ int main(int argc, char** argv) {
       (argc > 1) ? parse_arg(argv[1], "data_size") : kDefaultDataSize;
   const std::size_t num_tests =
       (argc > 2) ? parse_arg(argv[2], "num_tests") : kDefaultNumTests;
+  const std::size_t num_repeats =
+      (argc > 3) ? parse_arg(argv[3], "num_repeats") : kDefaultNumRepeats;
 
   if ((data_size % kMaxVecWidth) != 0) {
     throw std::invalid_argument("data_size must be divisible by 8");
   }
+
+  const int max_threads = omp_get_max_threads();
+  const int requested_threads[] = {1, 2, 4, 8, 16};
+  const int vec_widths[] = {1, 2, 4, 8};
 
   std::srand(12345);
 
@@ -175,38 +413,29 @@ int main(int argc, char** argv) {
   Eigen::MatrixXd ptsB(data_size, 3);
   Eigen::VectorXd latitudes(data_size);
 
-  Eigen::VectorXd x_scalar(data_size);
-  Eigen::VectorXd y_scalar(data_size);
-  Eigen::VectorXd x_pack2(data_size);
-  Eigen::VectorXd y_pack2(data_size);
-  Eigen::VectorXd x_pack4(data_size);
-  Eigen::VectorXd y_pack4(data_size);
-  Eigen::VectorXd x_pack8(data_size);
-  Eigen::VectorXd y_pack8(data_size);
+  const double pointA_x_significand = 5028374390644146;
+  const int pointA_x_exponent = -53;
+  const double pointA_y_significand = -7472957205960756;
+  const int pointA_y_exponent = -53;
+  const double pointA_z_significand = 6254432438282003;
+  const int pointA_z_exponent = -79;
 
-  double pointA_x_significand = 5028374390644146;
-  int pointA_x_exponent = -53;
-  double pointA_y_significand = -7472957205960756;
-  int pointA_y_exponent = -53;
-  double pointA_z_significand = 6254432438282003;
-  int pointA_z_exponent = -79;
+  const double pointB_x_significand = 5167685454902838;
+  const int pointB_x_exponent = -53;
+  const double pointB_y_significand = -7377307466399399;
+  const int pointB_y_exponent = -53;
+  const double pointB_z_significand = 4525606513452550;
+  const int pointB_z_exponent = -78;
 
-  double pointB_x_significand = 5167685454902838;
-  int pointB_x_exponent = -53;
-  double pointB_y_significand = -7377307466399399;
-  int pointB_y_exponent = -53;
-  double pointB_z_significand = 4525606513452550;
-  int pointB_z_exponent = -78;
+  const double constZ_significand = 7998403280412384;
+  const int constZ_exponent = -79;
 
-  double constZ_significand = 7998403280412384;
-  int constZ_exponent = -79;
-
-  Eigen::Vector3d pointA(
+  const Eigen::Vector3d pointA(
       pointA_x_significand * std::pow(2.0, pointA_x_exponent),
       pointA_y_significand * std::pow(2.0, pointA_y_exponent),
       pointA_z_significand * std::pow(2.0, pointA_z_exponent));
 
-  Eigen::Vector3d pointB(
+  const Eigen::Vector3d pointB(
       pointB_x_significand * std::pow(2.0, pointB_x_exponent),
       pointB_y_significand * std::pow(2.0, pointB_y_exponent),
       pointB_z_significand * std::pow(2.0, pointB_z_exponent));
@@ -224,76 +453,75 @@ int main(int argc, char** argv) {
   ptsB += 1e-12 * Eigen::MatrixXd::Random(ptsB.rows(), ptsB.cols());
   latitudes += 1e-12 * Eigen::VectorXd::Random(latitudes.size());
 
-  x_scalar.setZero();
-  y_scalar.setZero();
-  const double scalar_time =
-      run_benchmark_pure_fp<double>(num_tests, ptsA, ptsB, latitudes,
-                                    x_scalar, y_scalar);
-
-  x_pack2.setZero();
-  y_pack2.setZero();
-  const double pack2_time =
-      run_benchmark_pure_fp<Pack2>(num_tests, ptsA, ptsB, latitudes,
-                                   x_pack2, y_pack2);
-
-  x_pack4.setZero();
-  y_pack4.setZero();
-  const double pack4_time =
-      run_benchmark_pure_fp<Pack4>(num_tests, ptsA, ptsB, latitudes,
-                                  x_pack4, y_pack4);
-
-  x_pack8.setZero();
-  y_pack8.setZero();
-  const double pack8_time =
-      run_benchmark_pure_fp<Pack8>(num_tests, ptsA, ptsB, latitudes,
-                                   x_pack8, y_pack8);
-
-  const double scalar_time_per_point =
-      scalar_time / static_cast<double>(num_tests * data_size);
-  const double pack2_time_per_point =
-      pack2_time / static_cast<double>(num_tests * data_size);
-  const double pack4_time_per_point =
-      pack4_time / static_cast<double>(num_tests * data_size);
-  const double pack8_time_per_point =
-      pack8_time / static_cast<double>(num_tests * data_size);
-
-  const double x_l2_pack2 = l2_error(x_pack2, x_scalar);
-  const double y_l2_pack2 = l2_error(y_pack2, y_scalar);
-  const double x_l2 = l2_error(x_pack4, x_scalar);
-  const double y_l2 = l2_error(y_pack4, y_scalar);
-  const double x_l2_pack8 = l2_error(x_pack8, x_scalar);
-  const double y_l2_pack8 = l2_error(y_pack8, y_scalar);
-
   create_output_directory("tests/performance_test/output");
-  std::ofstream csv("tests/performance_test/output/"
-                    "gca_constlat_pure_fp_SIMDPack_timing.csv");
-  csv << std::scientific << std::setprecision(16);
-  csv << "method,threadsNum,vec_width,time\n";
-  csv << "pure_fp,1,1," << scalar_time_per_point << "\n";
-  csv << "pure_fp,1,2," << pack2_time_per_point << "\n";
-  csv << "pure_fp,1,4," << pack4_time_per_point << "\n";
-  csv << "pure_fp,1,8," << pack8_time_per_point << "\n";
 
-  std::cout << std::fixed << std::setprecision(3);
-  std::cout << "gca_constlat pure-FP benchmark complete\n";
+  std::ofstream repeats_csv(kRepeatsCsvPath);
+  repeats_csv << std::scientific << std::setprecision(16);
+  repeats_csv << "method,threadsNum,vec_width,repeat,time\n";
+
+  std::ofstream summary_csv(kSummaryCsvPath);
+  summary_csv << std::scientific << std::setprecision(16);
+  summary_csv << "method,threadsNum,vec_width,min_time,median_time,mean_time\n";
+
+  std::cout << "gca_constlat SIMD-pack timing benchmark\n";
   std::cout << "  data_size=" << data_size << ", num_tests=" << num_tests
-            << "\n";
-  std::cout << "  pure_fp width=1 : " << scalar_time_per_point
-            << " s/point\n";
-  std::cout << "  pure_fp width=2 : " << pack2_time_per_point
-            << " s/point\n";
-  std::cout << "  pure_fp width=4 : " << pack4_time_per_point
-            << " s/point\n";
-  std::cout << "  pure_fp width=8 : " << pack8_time_per_point
-            << " s/point\n";
-  std::cout << "  width=2 vs width=1 x_l2=" << std::scientific
-            << x_l2_pack2 << ", y_l2=" << y_l2_pack2 << "\n";
-  std::cout << "  width=4 vs width=1 x_l2=" << x_l2
-            << ", y_l2=" << y_l2 << "\n";
-  std::cout << "  width=8 vs width=1 x_l2=" << x_l2_pack8
-            << ", y_l2=" << y_l2_pack8 << "\n";
-  std::cout << "  timing CSV: tests/performance_test/output/"
-               "gca_constlat_pure_fp_SIMDPack_timing.csv\n";
+            << ", num_repeats=" << num_repeats << "\n";
+  std::cout << "  OpenMP max_threads=" << max_threads << "\n";
+
+  for (const int threads_num : requested_threads) {
+    if (threads_num > max_threads) {
+      continue;
+    }
+
+    IntersectionBuffers out(data_size);
+
+    for (const int vec_width : vec_widths) {
+      std::vector<double> pure_times;
+      std::vector<double> accux_times;
+      pure_times.reserve(num_repeats);
+      accux_times.reserve(num_repeats);
+
+      for (std::size_t repeat = 0; repeat < num_repeats; ++repeat) {
+        if ((repeat % 2) == 0) {
+          pure_times.push_back(run_and_record_trial<PureFpKernel>(
+              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
+              threads_num, repeats_csv));
+          accux_times.push_back(run_and_record_trial<AccuxKernel>(
+              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
+              threads_num, repeats_csv));
+        } else {
+          accux_times.push_back(run_and_record_trial<AccuxKernel>(
+              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
+              threads_num, repeats_csv));
+          pure_times.push_back(run_and_record_trial<PureFpKernel>(
+              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
+              threads_num, repeats_csv));
+        }
+      }
+
+      const SummaryStats pure_stats = summarize_times(pure_times);
+      const SummaryStats accux_stats = summarize_times(accux_times);
+
+      const MethodSummaryRow pure_row{
+          PureFpKernel::kMethod, threads_num, vec_width, pure_stats};
+      const MethodSummaryRow accux_row{
+          AccuxKernel::kMethod, threads_num, vec_width, accux_stats};
+
+      write_summary_row(summary_csv, pure_row);
+      write_summary_row(summary_csv, accux_row);
+
+      print_timing(PureFpKernel::kMethod, threads_num, vec_width, pure_stats);
+      print_timing(AccuxKernel::kMethod, threads_num, vec_width, accux_stats);
+
+      const double ratio = accux_stats.median_time / pure_stats.median_time;
+      std::cout << "  fake-identical ratio threads=" << threads_num
+                << " width=" << vec_width << " : " << std::fixed
+                << std::setprecision(6) << ratio << "\n";
+    }
+  }
+
+  std::cout << "  repeats CSV: " << kRepeatsCsvPath << "\n";
+  std::cout << "  summary CSV: " << kSummaryCsvPath << "\n";
 
   return EXIT_SUCCESS;
 }
