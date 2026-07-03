@@ -5,25 +5,14 @@ project(AccuSphGeom LANGUAGES C CXX)
 option(ACCUSPHGEOM_PREDICATES_USE_FLOAT
        "Use float version of Shewchuk predicates"
        OFF)
-option(ACCUSPHGEOM_BUILD_TESTS "Build AccuSphGeom tests" ON)
-
-find_path(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR Eigen/Dense
-  PATHS
-    /usr/include/eigen3
-    /usr/local/include/eigen3
-)
+option(ACCUSPHGEOM_BUILD_TESTS "Build AccuSphGeom tests" OFF)
+option(ACCUSPHGEOM_ENABLE_EIGEN_ADAPTERS
+       "Build Eigen adapter tests and SIMD-pack benchmarks"
+       OFF)
 
 add_library(simd_fma INTERFACE)
-# Compilation options for FMA instructions
+
 target_compile_options(simd_fma INTERFACE -march=native -ffp-contract=off)
-# A note on -ffp-contract:
-#   The default on GCC (at least with -std=gnu17 instead of -std=c++17) is
-#   -fp-contract=fast, which can contract floating point multiplications and
-#   additions spanning across **multiple statements** into FMA instructions.
-#   This can be surprising and change the roundoff behavior. This is especially
-#   unsafe for EFT algorithms, which rely fundamentally on the IEEE 754
-#   roundoff behavior implied by the sequence of statements as literally
-#   written in the source file.
 
 add_library(AccuSphGeom STATIC
   third_party/predicates.c
@@ -34,8 +23,6 @@ add_library(AccuSphGeom STATIC
 
 target_compile_features(AccuSphGeom PUBLIC cxx_std_17)
 
-# Public headers live in include/, and orient3d.hpp includes "predicates.h",
-# so we expose third_party/ as an include dir for consumers too.
 target_include_directories(AccuSphGeom
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -43,13 +30,13 @@ target_include_directories(AccuSphGeom
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/geogram_psm>
     $<INSTALL_INTERFACE:include>
 )
+
 target_link_libraries(AccuSphGeom PUBLIC simd_fma)
 
 if(ACCUSPHGEOM_PREDICATES_USE_FLOAT)
   target_compile_definitions(AccuSphGeom PUBLIC ACCUSPHGEOM_PREDICATES_USE_FLOAT)
 endif()
 
-# Reasonable warnings and strict floating-point semantics.
 if(MSVC)
   target_compile_options(AccuSphGeom PRIVATE /W4)
 else()
@@ -104,7 +91,8 @@ if(ACCUSPHGEOM_BUILD_TESTS)
   target_compile_definitions(test_gca_gca_intersection_baseline
     PRIVATE ACCUSPHGEOM_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   )
-  add_test(NAME test_gca_gca_intersection_baseline COMMAND test_gca_gca_intersection_baseline)
+  add_test(NAME test_gca_gca_intersection_baseline
+           COMMAND test_gca_gca_intersection_baseline)
 
   add_executable(test_gca_constlat_intersection_baseline
     tests/test_gca_constlat_intersection_baseline.cpp
@@ -113,26 +101,164 @@ if(ACCUSPHGEOM_BUILD_TESTS)
   target_compile_definitions(test_gca_constlat_intersection_baseline
     PRIVATE ACCUSPHGEOM_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   )
-  add_test(NAME test_gca_constlat_intersection_baseline COMMAND test_gca_constlat_intersection_baseline)
+  add_test(NAME test_gca_constlat_intersection_baseline
+           COMMAND test_gca_constlat_intersection_baseline)
+
+endif()
+
+if(ACCUSPHGEOM_ENABLE_EIGEN_ADAPTERS)
+  find_path(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR Eigen/Dense
+    PATHS
+      /usr/include/eigen3
+      /usr/local/include/eigen3
+  )
 
   if(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR)
-    add_executable(test_gca_gca_eigen_pack
-      tests/test_gca_gca_eigen_pack.cpp
-    )
-    target_link_libraries(test_gca_gca_eigen_pack PRIVATE AccuSphGeom)
-    target_include_directories(test_gca_gca_eigen_pack
-      PRIVATE ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
-    )
-    add_test(NAME test_gca_gca_eigen_pack COMMAND test_gca_gca_eigen_pack)
+    message(STATUS "Eigen3 found at: ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}")
 
-    add_executable(test_gca_constlat_eigen_pack
-      tests/test_gca_constlat_eigen_pack.cpp
+    if(ACCUSPHGEOM_BUILD_TESTS)
+      add_executable(test_gca_gca_eigen_pack
+        tests/test_gca_gca_eigen_pack.cpp
+      )
+      target_link_libraries(test_gca_gca_eigen_pack PRIVATE AccuSphGeom)
+      target_include_directories(test_gca_gca_eigen_pack
+        PRIVATE ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
+      )
+      add_test(NAME test_gca_gca_eigen_pack COMMAND test_gca_gca_eigen_pack)
+
+      add_executable(test_gca_constlat_eigen_pack
+        tests/test_gca_constlat_eigen_pack.cpp
+      )
+      target_link_libraries(test_gca_constlat_eigen_pack PRIVATE AccuSphGeom)
+      target_include_directories(test_gca_constlat_eigen_pack
+        PRIVATE ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
+      )
+      add_test(NAME test_gca_constlat_eigen_pack
+               COMMAND test_gca_constlat_eigen_pack)
+    endif()
+
+    find_package(OpenMP REQUIRED)
+
+    add_executable(benchmark_gca_constlat_SIMDPack
+      tests/performance_test/gca_constLat/benchmark_gca_constlat_SIMDPack.cpp
+      tests/performance_test/gca_constLat/fp64_GCAconstLat.hh
     )
-    target_link_libraries(test_gca_constlat_eigen_pack PRIVATE AccuSphGeom)
-    target_include_directories(test_gca_constlat_eigen_pack
-      PRIVATE ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
+
+    target_link_libraries(benchmark_gca_constlat_SIMDPack
+      PRIVATE
+        AccuSphGeom
+        OpenMP::OpenMP_CXX
     )
-    add_test(NAME test_gca_constlat_eigen_pack COMMAND test_gca_constlat_eigen_pack)
+
+    target_include_directories(benchmark_gca_constlat_SIMDPack
+      PRIVATE
+        ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/performance_test/gca_constLat
+    )
+
+    if(MSVC)
+      target_compile_options(benchmark_gca_constlat_SIMDPack PRIVATE /O2)
+    else()
+      target_compile_options(benchmark_gca_constlat_SIMDPack
+        PRIVATE
+          -O3
+          -march=native
+          -ffp-contract=off
+          -fno-fast-math
+      )
+    endif()
+
+    add_executable(benchmark_gca_constlat_try_SIMDPack
+      tests/performance_test/gca_constLat/benchmark_gca_constlat_try_SIMDPack.cpp
+      tests/performance_test/gca_constLat/fp64_GCAconstLat.hh
+    )
+
+    target_link_libraries(benchmark_gca_constlat_try_SIMDPack
+      PRIVATE
+        AccuSphGeom
+        OpenMP::OpenMP_CXX
+    )
+
+    target_include_directories(benchmark_gca_constlat_try_SIMDPack
+      PRIVATE
+        ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/performance_test/gca_constLat
+    )
+
+    if(MSVC)
+      target_compile_options(benchmark_gca_constlat_try_SIMDPack PRIVATE /O2)
+    else()
+      target_compile_options(benchmark_gca_constlat_try_SIMDPack
+        PRIVATE
+          -O3
+          -march=native
+          -ffp-contract=off
+          -fno-fast-math
+      )
+    endif()
+
+    add_executable(benchmark_gca_gca_SIMDPack
+      tests/performance_test/gca_gca/benchmark_gca_gca_SIMDPack.cpp
+      tests/performance_test/gca_gca/fp64_GCAGCA.hh
+    )
+
+    target_link_libraries(benchmark_gca_gca_SIMDPack
+      PRIVATE
+        AccuSphGeom
+        OpenMP::OpenMP_CXX
+    )
+
+    target_include_directories(benchmark_gca_gca_SIMDPack
+      PRIVATE
+        ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/performance_test/gca_gca
+    )
+
+    if(MSVC)
+      target_compile_options(benchmark_gca_gca_SIMDPack PRIVATE /O2)
+    else()
+      target_compile_options(benchmark_gca_gca_SIMDPack
+        PRIVATE
+          -O3
+          -march=native
+          -ffp-contract=off
+          -fno-fast-math
+      )
+    endif()
+
+    add_executable(benchmark_gca_gca_try_SIMDPack
+      tests/performance_test/gca_gca/benchmark_gca_gca_try_SIMDPack.cpp
+      tests/performance_test/gca_gca/fp64_GCAGCA.hh
+    )
+
+    target_link_libraries(benchmark_gca_gca_try_SIMDPack
+      PRIVATE
+        AccuSphGeom
+        OpenMP::OpenMP_CXX
+    )
+
+    target_include_directories(benchmark_gca_gca_try_SIMDPack
+      PRIVATE
+        ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/performance_test/gca_gca
+    )
+
+    if(MSVC)
+      target_compile_options(benchmark_gca_gca_try_SIMDPack PRIVATE /O2)
+    else()
+      target_compile_options(benchmark_gca_gca_try_SIMDPack
+        PRIVATE
+          -O3
+          -march=native
+          -ffp-contract=off
+          -fno-fast-math
+      )
+    endif()
+
+  else()
+    message(WARNING
+      "ACCUSPHGEOM_ENABLE_EIGEN_ADAPTERS=ON, but Eigen3 was not found. "
+      "Eigen adapter tests and SIMD-pack benchmarks will not be built."
+    )
   endif()
-
 endif()

@@ -33,6 +33,7 @@ template <typename T>
 inline GcaConstLatIntersections<T> accux_constlat(const numeric::Vec3<T>& a,
                                                   const numeric::Vec3<T>& b,
                                                   T z0) {
+
   const auto normal = accucross(a, b);
   const auto s2 = numeric::sum_of_squares_c<T, 2>(
       {normal.hi[0], normal.hi[1]}, {normal.lo[0], normal.lo[1]});
