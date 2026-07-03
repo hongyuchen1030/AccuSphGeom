@@ -9,7 +9,7 @@ import pandas as pd
 
 
 REPO_ROOT = Path("/global/homes/h/hyvchen/AccuSphGeom")
-OUTPUT_DIR = REPO_ROOT / "tests" / "performance_test" / "output"
+OUTPUT_DIR = REPO_ROOT / "tests" / "performance_test" / "gca_constLat" / "output"
 INPUT_CSV = OUTPUT_DIR / "gca_constlat_saturation_sweep.csv"
 SWEEP_PLOT = OUTPUT_DIR / "gca_constlat_saturation_sweep.png"
 RATIO_PLOT = OUTPUT_DIR / "gca_constlat_saturation_best_ratio.png"

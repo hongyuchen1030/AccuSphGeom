@@ -4,11 +4,12 @@ set -euo pipefail
 
 #salloc -N 1 -q interactive -t 04:00:00 -C cpu -A m2637 --ntasks=1 --cpus-per-task=16
 REPO_ROOT="/global/homes/h/hyvchen/AccuSphGeom"
+SCRIPT_DIR="${REPO_ROOT}/tests/performance_test/gca_constLat"
 BUILD_DIR="${REPO_ROOT}/build_benchmark"
-TARGET="benchmark_gca_constlat_SIMDPack"
+TARGET="benchmark_gca_constlat_try_SIMDPack"
 
-# Conservative saturated benchmark size from the sweep.
-DATA_SIZE="${DATA_SIZE:-10000000}"
+# Conservative larger try-API benchmark size.
+DATA_SIZE="${DATA_SIZE:-100000000}"
 NUM_TESTS="${NUM_TESTS:-50}"
 NUM_REPEATS="${NUM_REPEATS:-7}"
 
@@ -16,10 +17,10 @@ NUM_REPEATS="${NUM_REPEATS:-7}"
 # This is intentionally called THREADS, not CORES.
 THREADS="${THREADS:-16}"
 
-OUTPUT_DIR="${REPO_ROOT}/tests/performance_test/output"
+OUTPUT_DIR="${SCRIPT_DIR}/output"
 CSV_PATH="${OUTPUT_DIR}/gca_constlat_SIMDPack_timing_summary.csv"
 REPEATS_CSV_PATH="${OUTPUT_DIR}/gca_constlat_SIMDPack_timing_repeats.csv"
-PLOT_PATH="${OUTPUT_DIR}/gca_constlat_SIMDPack_timing.png"
+PLOT_PATH="${OUTPUT_DIR}/gca_constlat_SIMDPack_timing_try.png"
 
 cd "${REPO_ROOT}"
 
@@ -30,6 +31,7 @@ echo "==> Configuring CMake Release build"
 cmake -S . -B "${BUILD_DIR}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DACCUSPHGEOM_BUILD_TESTS=ON \
+  -DACCUSPHGEOM_ENABLE_EIGEN_ADAPTERS=ON \
   -DACCUSPHGEOM_PREDICATES_USE_FLOAT=OFF
 
 echo "==> Building ${TARGET}"
@@ -50,7 +52,7 @@ srun -n 1 -c "${THREADS}" --cpu-bind=cores \
 
 echo "==> Plotting benchmark results"
 module load python
-python3 "${REPO_ROOT}/tests/performance_test/plot_gca_constlat_SIMDPack.py" \
+python3 "${SCRIPT_DIR}/plot_gca_constlat_try_SIMDPack.py" \
   --csv "${CSV_PATH}" \
   --output "${PLOT_PATH}"
 

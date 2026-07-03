@@ -6,9 +6,7 @@
 
 The algorithms implemented in this repository are described in:
 
-Chen, H. (2026)
-*Accurate and Robust Algorithms for Spherical Polygon Operations*
-[https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/](https://egusphere.copernicus.org/preprints/2026/egusphere-2026-636/)
+Chen, H., Ullrich, P. A., Panetta, J., Marsico, D., Hanke, M., Jain, R., Zhang, C., and Jacob, R. L. (2026). "Accurate and Robust Geometric Algorithms for Regridding on the Sphere." *EGUsphere* (preprint). https://doi.org/10.5194/egusphere-2026-636
 
 This repository provides a **reference implementation of all related algorithms** in that work.
 If you use the algorithm APIs (e.g., spherical point-in-polygon or latitude–longitude bounds), please cite the above paper.
@@ -17,10 +15,7 @@ If you use the algorithm APIs (e.g., spherical point-in-polygon or latitude–lo
 
 In addition, the construction layer is based on:
 
-Chen, H.
-*Accurate and Robust Great Circle Arc Intersection and Great Circle Arc Constant Latitude Intersection on the Sphere.*
-SIAM Journal on Scientific Computing
-[https://epubs.siam.org/doi/full/10.1137/25M1737614](https://epubs.siam.org/doi/full/10.1137/25M1737614)
+Chen, H., Ullrich, P. A., and Panetta, J. (2026). "Fast and Accurate Intersections on a Sphere." *SIAM Journal on Scientific Computing*, 48, B208-B232. https://doi.org/10.1137/25M1737614
 
 If you use the **construction APIs** (e.g., GCA–GCA or GCA–ConstLat intersection), please also cite this paper.
 
@@ -48,18 +43,81 @@ The library is organized in **two conceptual levels**:
 
 ```bash
 git clone https://github.com/hongyuchen1030/AccuSphGeom.git
+cd AccuSphGeom
 ```
 
-Compile with:
+### Quick build
+
+The repository provides a convenience script:
 
 ```bash
-g++ program.cpp -I/path/to/AccuSphGeom/include -std=c++17
+./quick_build.sh
 ```
 
-Include the library:
+Optional toggles:
+
+```bash
+./quick_build.sh --tests
+./quick_build.sh --tests --eigen-adapters
+```
+
+This maps to the CMake options:
+
+* `ACCUSPHGEOM_BUILD_TESTS`
+* `ACCUSPHGEOM_ENABLE_EIGEN_ADAPTERS`
+
+### Direct CMake build
+
+Minimal library build:
+
+```bash
+cmake -S . -B build
+cmake --build build -j
+```
+
+Build with tests:
+
+```bash
+cmake -S . -B build -DACCUSPHGEOM_BUILD_TESTS=ON
+cmake --build build -j
+```
+
+Build with Eigen adapter tests and SIMD-pack benchmarks:
+
+```bash
+cmake -S . -B build \
+  -DACCUSPHGEOM_BUILD_TESTS=ON \
+  -DACCUSPHGEOM_ENABLE_EIGEN_ADAPTERS=ON
+cmake --build build -j
+```
+
+### Using the library
+
+For most public APIs, users should include the headers and link against the built
+`AccuSphGeom` library. This repository is not currently a fully header-only
+library.
+
+Typical compile pattern:
+
+```bash
+g++ program.cpp \
+  -I/path/to/AccuSphGeom/include \
+  -L/path/to/AccuSphGeom/build \
+  -lAccuSphGeom \
+  -std=c++17
+```
+
+Include the umbrella header:
 
 ```cpp
 #include <accusphgeom/accusphgeom.hpp>
+```
+
+Or include individual components such as:
+
+```cpp
+#include <accusphgeom/algorithms/point_in_polygon_sphere.hpp>
+#include <accusphgeom/constructions/gca_gca_intersection.hpp>
 ```
 
 ---
@@ -251,10 +309,13 @@ The construction layer provides **accurate and vectorizable intersection computa
 
 Based on:
 
-Chen, H.
-*Accurate and Robust Great Circle Arc Intersection and Great Circle Arc Constant Latitude Intersection on the Sphere.*
-SIAM Journal on Scientific Computing
-[https://epubs.siam.org/doi/full/10.1137/25M1737614](https://epubs.siam.org/doi/full/10.1137/25M1737614)
+Chen, H., Ullrich, P. A., and Panetta, J. (2026). "Fast and Accurate Intersections on a Sphere." *SIAM Journal on Scientific Computing*, 48, B208-B232. https://doi.org/10.1137/25M1737614
+
+We also provide performance benchmarks for our `accux` APIs in
+[`tests/performance_test`](tests/performance_test), following the
+benchmarking style in the aforementioned paper. For results and detailed
+descriptions, refer to
+[`tests/performance_test/README.md`](tests/performance_test/README.md).
 
 ---
 

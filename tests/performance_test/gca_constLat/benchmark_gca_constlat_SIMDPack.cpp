@@ -24,18 +24,22 @@
 namespace {
 
 using accusphgeom::constructions::accux_constlat;
+using accusphgeom::constructions::try_gca_constlat_intersection;
 using accusphgeom::numeric::Vec3;
-using accusphgeom::performance_test::fp64_gca_constlat_pure_fp;
+using accusphgeom::performance_test::fp64_gca_constlat;
+using accusphgeom::performance_test::fp64_try_gca_constlat_intersection;
 
 constexpr int kMaxVecWidth = 8;
-constexpr std::size_t kDefaultDataSize = 1000000000;
+constexpr std::size_t kDefaultDataSize = 2000000;
 constexpr std::size_t kDefaultNumTests = 100;
 constexpr std::size_t kDefaultNumRepeats = 7;
 
 constexpr char kRepeatsCsvPath[] =
-    "tests/performance_test/output/gca_constlat_SIMDPack_timing_repeats.csv";
+    "tests/performance_test/gca_constLat/output/"
+    "gca_constlat_SIMDPack_timing_repeats.csv";
 constexpr char kSummaryCsvPath[] =
-    "tests/performance_test/output/gca_constlat_SIMDPack_timing_summary.csv";
+    "tests/performance_test/gca_constLat/output/"
+    "gca_constlat_SIMDPack_timing_summary.csv";
 
 struct IntersectionBuffers {
   Eigen::VectorXd pos_x;
@@ -60,6 +64,26 @@ struct IntersectionBuffers {
     neg_x.setZero();
     neg_y.setZero();
     neg_z.setZero();
+  }
+};
+
+struct TryBuffers {
+  Eigen::VectorXd point_x;
+  Eigen::VectorXd point_y;
+  Eigen::VectorXd point_z;
+  Eigen::VectorXd status;
+
+  explicit TryBuffers(std::size_t size)
+      : point_x(static_cast<Eigen::Index>(size)),
+        point_y(static_cast<Eigen::Index>(size)),
+        point_z(static_cast<Eigen::Index>(size)),
+        status(static_cast<Eigen::Index>(size)) {}
+
+  void setZero() {
+    point_x.setZero();
+    point_y.setZero();
+    point_z.setZero();
+    status.setZero();
   }
 };
 
@@ -111,6 +135,13 @@ void consume_output(const IntersectionBuffers& out) {
   do_not_optimize(out.neg_z.data());
 }
 
+void consume_output(const TryBuffers& out) {
+  do_not_optimize(out.point_x.data());
+  do_not_optimize(out.point_y.data());
+  do_not_optimize(out.point_z.data());
+  do_not_optimize(out.status.data());
+}
+
 void validate_sizes(const Eigen::MatrixXd& ptsA,
                     const Eigen::MatrixXd& ptsB,
                     const Eigen::VectorXd& latitudes,
@@ -120,6 +151,20 @@ void validate_sizes(const Eigen::MatrixXd& ptsA,
       (out.pos_x.rows() != ptsA.rows()) || (out.pos_y.rows() != ptsA.rows()) ||
       (out.pos_z.rows() != ptsA.rows()) || (out.neg_x.rows() != ptsA.rows()) ||
       (out.neg_y.rows() != ptsA.rows()) || (out.neg_z.rows() != ptsA.rows())) {
+    throw std::runtime_error("All passed arrays must have compatible sizes");
+  }
+}
+
+void validate_sizes(const Eigen::MatrixXd& ptsA,
+                    const Eigen::MatrixXd& ptsB,
+                    const Eigen::VectorXd& latitudes,
+                    const TryBuffers& out) {
+  if ((ptsA.cols() != 3) || (ptsB.cols() != 3) ||
+      (ptsB.rows() != ptsA.rows()) || (latitudes.rows() != ptsA.rows()) ||
+      (out.point_x.rows() != ptsA.rows()) ||
+      (out.point_y.rows() != ptsA.rows()) ||
+      (out.point_z.rows() != ptsA.rows()) ||
+      (out.status.rows() != ptsA.rows())) {
     throw std::runtime_error("All passed arrays must have compatible sizes");
   }
 }
@@ -155,18 +200,43 @@ void store_pack(
   out.neg_z.template segment<N>(ei).array() = p.point_neg[2];
 }
 
+void store_scalar(
+    const accusphgeom::constructions::GcaConstLatTryResult<double>& p,
+    std::size_t i,
+    TryBuffers& out) {
+  const auto ei = static_cast<Eigen::Index>(i);
+
+  out.point_x(ei) = p.point[0];
+  out.point_y(ei) = p.point[1];
+  out.point_z(ei) = p.point[2];
+  out.status(ei) = p.status;
+}
+
+template <int N>
+void store_pack(
+    const accusphgeom::constructions::GcaConstLatTryResult<EigenPack<N>>& p,
+    std::size_t i,
+    TryBuffers& out) {
+  const auto ei = static_cast<Eigen::Index>(i);
+
+  out.point_x.template segment<N>(ei).array() = p.point[0];
+  out.point_y.template segment<N>(ei).array() = p.point[1];
+  out.point_z.template segment<N>(ei).array() = p.point[2];
+  out.status.template segment<N>(ei).array() = p.status;
+}
+
 struct PureFpKernel {
   static constexpr const char* kMethod = "pure_fp";
 
   static auto eval(const Vec3<double>& a, const Vec3<double>& b, double z0) {
-    return fp64_gca_constlat_pure_fp(a, b, z0);
+    return fp64_gca_constlat(a, b, z0);
   }
 
   template <int N>
   static auto eval(const Vec3<EigenPack<N>>& a,
                    const Vec3<EigenPack<N>>& b,
                    const EigenPack<N>& z0) {
-    return fp64_gca_constlat_pure_fp<N>(a, b, z0);
+    return fp64_gca_constlat<N>(a, b, z0);
   }
 };
 
@@ -185,11 +255,41 @@ struct AccuxKernel {
   }
 };
 
-template <typename Kernel>
+struct PureFpTryKernel {
+  static constexpr const char* kMethod = "pure_fp_try";
+
+  static auto eval(const Vec3<double>& a, const Vec3<double>& b, double z0) {
+    return fp64_try_gca_constlat_intersection(a, b, z0);
+  }
+
+  template <int N>
+  static auto eval(const Vec3<EigenPack<N>>& a,
+                   const Vec3<EigenPack<N>>& b,
+                   const EigenPack<N>& z0) {
+    return fp64_try_gca_constlat_intersection(a, b, z0);
+  }
+};
+
+struct AccuxTryKernel {
+  static constexpr const char* kMethod = "accux_try";
+
+  static auto eval(const Vec3<double>& a, const Vec3<double>& b, double z0) {
+    return try_gca_constlat_intersection(a, b, z0);
+  }
+
+  template <int N>
+  static auto eval(const Vec3<EigenPack<N>>& a,
+                   const Vec3<EigenPack<N>>& b,
+                   const EigenPack<N>& z0) {
+    return try_gca_constlat_intersection(a, b, z0);
+  }
+};
+
+template <typename Kernel, typename OutBuffers>
 void compute_scalar(const Eigen::MatrixXd& ptsA,
                     const Eigen::MatrixXd& ptsB,
                     const Eigen::VectorXd& latitudes,
-                    IntersectionBuffers& out) {
+                    OutBuffers& out) {
   validate_sizes(ptsA, ptsB, latitudes, out);
 
   const std::size_t size = static_cast<std::size_t>(ptsA.rows());
@@ -216,11 +316,11 @@ void compute_scalar(const Eigen::MatrixXd& ptsA,
   }
 }
 
-template <int N, typename Kernel>
+template <int N, typename Kernel, typename OutBuffers>
 void compute_pack(const Eigen::MatrixXd& ptsA,
                   const Eigen::MatrixXd& ptsB,
                   const Eigen::VectorXd& latitudes,
-                  IntersectionBuffers& out) {
+                  OutBuffers& out) {
   validate_sizes(ptsA, ptsB, latitudes, out);
 
   const std::size_t size = static_cast<std::size_t>(ptsA.rows());
@@ -250,13 +350,13 @@ void compute_pack(const Eigen::MatrixXd& ptsA,
   }
 }
 
-template <typename ComputeFn>
+template <typename ComputeFn, typename OutBuffers>
 double run_benchmark_trial(ComputeFn compute,
                            std::size_t num_tests,
                            const Eigen::MatrixXd& ptsA,
                            const Eigen::MatrixXd& ptsB,
                            const Eigen::VectorXd& latitudes,
-                           IntersectionBuffers& out,
+                           OutBuffers& out,
                            int threads_num) {
   omp_set_num_threads(threads_num);
 
@@ -327,61 +427,135 @@ void print_timing(const char* method,
                   int threads_num,
                   int vec_width,
                   const SummaryStats& stats) {
-  std::cout << "  " << std::setw(7) << method << " threads=" << std::setw(2)
+  std::cout << "  " << std::setw(12) << method << " threads=" << std::setw(2)
             << threads_num << " width=" << vec_width << " median="
             << std::fixed << std::setprecision(3) << stats.median_time * 1e9
             << " ns/point min=" << stats.min_time * 1e9 << " ns/point\n";
 }
 
-template <typename Kernel>
+template <typename Kernel, typename OutBuffers>
 double run_width_trial(int vec_width,
                        std::size_t num_tests,
                        const Eigen::MatrixXd& ptsA,
                        const Eigen::MatrixXd& ptsB,
                        const Eigen::VectorXd& latitudes,
-                       IntersectionBuffers& out,
+                       OutBuffers& out,
                        int threads_num) {
   switch (vec_width) {
     case 1:
       return seconds_per_point(
-          run_benchmark_trial(compute_scalar<Kernel>, num_tests, ptsA, ptsB,
-                              latitudes, out, threads_num),
+          run_benchmark_trial(compute_scalar<Kernel, OutBuffers>, num_tests,
+                              ptsA, ptsB, latitudes, out, threads_num),
           num_tests, static_cast<std::size_t>(ptsA.rows()));
     case 2:
       return seconds_per_point(
-          run_benchmark_trial(compute_pack<2, Kernel>, num_tests, ptsA, ptsB,
-                              latitudes, out, threads_num),
+          run_benchmark_trial(compute_pack<2, Kernel, OutBuffers>, num_tests,
+                              ptsA, ptsB, latitudes, out, threads_num),
           num_tests, static_cast<std::size_t>(ptsA.rows()));
     case 4:
       return seconds_per_point(
-          run_benchmark_trial(compute_pack<4, Kernel>, num_tests, ptsA, ptsB,
-                              latitudes, out, threads_num),
+          run_benchmark_trial(compute_pack<4, Kernel, OutBuffers>, num_tests,
+                              ptsA, ptsB, latitudes, out, threads_num),
           num_tests, static_cast<std::size_t>(ptsA.rows()));
     case 8:
       return seconds_per_point(
-          run_benchmark_trial(compute_pack<8, Kernel>, num_tests, ptsA, ptsB,
-                              latitudes, out, threads_num),
+          run_benchmark_trial(compute_pack<8, Kernel, OutBuffers>, num_tests,
+                              ptsA, ptsB, latitudes, out, threads_num),
           num_tests, static_cast<std::size_t>(ptsA.rows()));
     default:
       throw std::invalid_argument("Unsupported vec_width");
   }
 }
 
-template <typename Kernel>
+template <typename Kernel, typename OutBuffers>
 double run_and_record_trial(int vec_width,
                             std::size_t repeat,
                             std::size_t num_tests,
                             const Eigen::MatrixXd& ptsA,
                             const Eigen::MatrixXd& ptsB,
                             const Eigen::VectorXd& latitudes,
-                            IntersectionBuffers& out,
+                            OutBuffers& out,
                             int threads_num,
                             std::ofstream& repeats_csv) {
-  const double time = run_width_trial<Kernel>(vec_width, num_tests, ptsA, ptsB,
-                                              latitudes, out, threads_num);
+  const double time = run_width_trial<Kernel, OutBuffers>(
+      vec_width, num_tests, ptsA, ptsB, latitudes, out, threads_num);
   write_repeat_row(repeats_csv, Kernel::kMethod, threads_num, vec_width, repeat,
                    time);
   return time;
+}
+
+template <typename PureKernel, typename AccuxKernelT, typename OutBuffers>
+void run_kernel_pair_block(const char* block_title,
+                           std::size_t data_size,
+                           std::size_t num_tests,
+                           std::size_t num_repeats,
+                           const Eigen::MatrixXd& ptsA,
+                           const Eigen::MatrixXd& ptsB,
+                           const Eigen::VectorXd& latitudes,
+                           const int* requested_threads,
+                           int num_thread_entries,
+                           const int* vec_widths,
+                           int num_vec_width_entries,
+                           int max_threads,
+                           std::ofstream& repeats_csv,
+                           std::ofstream& summary_csv) {
+  std::cout << "\n" << block_title << "\n";
+
+  for (int ti = 0; ti < num_thread_entries; ++ti) {
+    const int threads_num = requested_threads[ti];
+    if (threads_num > max_threads) {
+      continue;
+    }
+
+    OutBuffers out(data_size);
+
+    for (int wi = 0; wi < num_vec_width_entries; ++wi) {
+      const int vec_width = vec_widths[wi];
+
+      std::vector<double> pure_times;
+      std::vector<double> accux_times;
+      pure_times.reserve(num_repeats);
+      accux_times.reserve(num_repeats);
+
+      for (std::size_t repeat = 0; repeat < num_repeats; ++repeat) {
+        if ((repeat % 2) == 0) {
+          pure_times.push_back(run_and_record_trial<PureKernel>(
+              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
+              threads_num, repeats_csv));
+          accux_times.push_back(run_and_record_trial<AccuxKernelT>(
+              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
+              threads_num, repeats_csv));
+        } else {
+          accux_times.push_back(run_and_record_trial<AccuxKernelT>(
+              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
+              threads_num, repeats_csv));
+          pure_times.push_back(run_and_record_trial<PureKernel>(
+              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
+              threads_num, repeats_csv));
+        }
+      }
+
+      const SummaryStats pure_stats = summarize_times(pure_times);
+      const SummaryStats accux_stats = summarize_times(accux_times);
+
+      const MethodSummaryRow pure_row{
+          PureKernel::kMethod, threads_num, vec_width, pure_stats};
+      const MethodSummaryRow accux_row{
+          AccuxKernelT::kMethod, threads_num, vec_width, accux_stats};
+
+      write_summary_row(summary_csv, pure_row);
+      write_summary_row(summary_csv, accux_row);
+
+      print_timing(PureKernel::kMethod, threads_num, vec_width, pure_stats);
+      print_timing(AccuxKernelT::kMethod, threads_num, vec_width, accux_stats);
+
+      const double ratio = accux_stats.median_time / pure_stats.median_time;
+      std::cout << "  " << AccuxKernelT::kMethod << "/"
+                << PureKernel::kMethod << " ratio threads=" << threads_num
+                << " width=" << vec_width << " : " << std::fixed
+                << std::setprecision(6) << ratio << "\n";
+    }
+  }
 }
 
 }  // namespace
@@ -405,7 +579,7 @@ int main(int argc, char** argv) {
 
   const int max_threads = omp_get_max_threads();
   const int requested_threads[] = {1, 2, 4, 8, 16};
-  const int vec_widths[] = {1, 2, 4, 8};
+  const int vec_widths[] = {1, 2, 4};
 
   std::srand(12345);
 
@@ -453,7 +627,7 @@ int main(int argc, char** argv) {
   ptsB += 1e-12 * Eigen::MatrixXd::Random(ptsB.rows(), ptsB.cols());
   latitudes += 1e-12 * Eigen::VectorXd::Random(latitudes.size());
 
-  create_output_directory("tests/performance_test/output");
+  create_output_directory("tests/performance_test/gca_constLat/output");
 
   std::ofstream repeats_csv(kRepeatsCsvPath);
   repeats_csv << std::scientific << std::setprecision(16);
@@ -468,57 +642,19 @@ int main(int argc, char** argv) {
             << ", num_repeats=" << num_repeats << "\n";
   std::cout << "  OpenMP max_threads=" << max_threads << "\n";
 
-  for (const int threads_num : requested_threads) {
-    if (threads_num > max_threads) {
-      continue;
-    }
+  run_kernel_pair_block<PureFpKernel, AccuxKernel, IntersectionBuffers>(
+      "accux_constlat full-intersections timing benchmark", data_size,
+      num_tests, num_repeats, ptsA, ptsB, latitudes, requested_threads,
+      static_cast<int>(std::size(requested_threads)), vec_widths,
+      static_cast<int>(std::size(vec_widths)), max_threads, repeats_csv,
+      summary_csv);
 
-    IntersectionBuffers out(data_size);
-
-    for (const int vec_width : vec_widths) {
-      std::vector<double> pure_times;
-      std::vector<double> accux_times;
-      pure_times.reserve(num_repeats);
-      accux_times.reserve(num_repeats);
-
-      for (std::size_t repeat = 0; repeat < num_repeats; ++repeat) {
-        if ((repeat % 2) == 0) {
-          pure_times.push_back(run_and_record_trial<PureFpKernel>(
-              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
-              threads_num, repeats_csv));
-          accux_times.push_back(run_and_record_trial<AccuxKernel>(
-              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
-              threads_num, repeats_csv));
-        } else {
-          accux_times.push_back(run_and_record_trial<AccuxKernel>(
-              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
-              threads_num, repeats_csv));
-          pure_times.push_back(run_and_record_trial<PureFpKernel>(
-              vec_width, repeat, num_tests, ptsA, ptsB, latitudes, out,
-              threads_num, repeats_csv));
-        }
-      }
-
-      const SummaryStats pure_stats = summarize_times(pure_times);
-      const SummaryStats accux_stats = summarize_times(accux_times);
-
-      const MethodSummaryRow pure_row{
-          PureFpKernel::kMethod, threads_num, vec_width, pure_stats};
-      const MethodSummaryRow accux_row{
-          AccuxKernel::kMethod, threads_num, vec_width, accux_stats};
-
-      write_summary_row(summary_csv, pure_row);
-      write_summary_row(summary_csv, accux_row);
-
-      print_timing(PureFpKernel::kMethod, threads_num, vec_width, pure_stats);
-      print_timing(AccuxKernel::kMethod, threads_num, vec_width, accux_stats);
-
-      const double ratio = accux_stats.median_time / pure_stats.median_time;
-      std::cout << "  fake-identical ratio threads=" << threads_num
-                << " width=" << vec_width << " : " << std::fixed
-                << std::setprecision(6) << ratio << "\n";
-    }
-  }
+  run_kernel_pair_block<PureFpTryKernel, AccuxTryKernel, TryBuffers>(
+      "try_gca_constlat_intersection full-API timing benchmark", data_size,
+      num_tests, num_repeats, ptsA, ptsB, latitudes, requested_threads,
+      static_cast<int>(std::size(requested_threads)), vec_widths,
+      static_cast<int>(std::size(vec_widths)), max_threads, repeats_csv,
+      summary_csv);
 
   std::cout << "  repeats CSV: " << kRepeatsCsvPath << "\n";
   std::cout << "  summary CSV: " << kSummaryCsvPath << "\n";
