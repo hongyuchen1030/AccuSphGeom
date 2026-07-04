@@ -53,6 +53,7 @@ srun -n 1 -c "${THREADS}" --cpu-bind=cores \
 echo "==> Plotting benchmark results"
 module load python
 python3 "${SCRIPT_DIR}/plot_gca_gca_try_SIMDPack.py" \
+  "GCA-GCA Try-API Performance" \
   --csv "${CSV_PATH}" \
   --output "${PLOT_PATH}"
 
