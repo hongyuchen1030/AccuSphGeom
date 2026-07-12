@@ -10,9 +10,19 @@ option(ACCUSPHGEOM_ENABLE_EIGEN_ADAPTERS
        "Build Eigen adapter tests and SIMD-pack benchmarks"
        OFF)
 
+find_path(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR Eigen/Dense
+  PATHS
+    /usr/include/eigen3
+    /usr/local/include/eigen3
+)
+
 add_library(simd_fma INTERFACE)
 
 target_compile_options(simd_fma INTERFACE -march=native -ffp-contract=off)
+
+if(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR)
+  target_include_directories(simd_fma INTERFACE ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR})
+endif()
 
 add_library(AccuSphGeom STATIC
   third_party/predicates.c
@@ -107,12 +117,6 @@ if(ACCUSPHGEOM_BUILD_TESTS)
 endif()
 
 if(ACCUSPHGEOM_ENABLE_EIGEN_ADAPTERS)
-  find_path(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR Eigen/Dense
-    PATHS
-      /usr/include/eigen3
-      /usr/local/include/eigen3
-  )
-
   if(ACCUSPHGEOM_EIGEN3_INCLUDE_DIR)
     message(STATUS "Eigen3 found at: ${ACCUSPHGEOM_EIGEN3_INCLUDE_DIR}")
 
